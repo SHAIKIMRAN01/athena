@@ -29,6 +29,10 @@ public class Account {
     @Column(nullable = false, length = 20)
     private String status = "ACTIVE";
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_type", nullable = false, length = 20, updatable = false)
+    private AccountType accountType = AccountType.CUSTOMER;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -77,6 +81,14 @@ public class Account {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public boolean isActive() {
+        return "ACTIVE".equals(status);
+    }
+
+    public AccountType getAccountType() {
+        return accountType;
     }
 
     public LocalDateTime getCreatedAt() {

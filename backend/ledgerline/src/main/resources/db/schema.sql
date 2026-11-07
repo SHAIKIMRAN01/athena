@@ -33,12 +33,26 @@ CREATE TABLE IF NOT EXISTS accounts (
     account_number VARCHAR(30) NOT NULL UNIQUE,
     balance NUMERIC(19,2) NOT NULL DEFAULT 0.00,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    account_type VARCHAR(20) NOT NULL DEFAULT 'CUSTOMER',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT chk_account_balance CHECK (balance >= 0),
     CONSTRAINT chk_account_status
-        CHECK (status IN ('ACTIVE', 'FROZEN', 'CLOSED'))
+        CHECK (status IN ('ACTIVE', 'FROZEN', 'CLOSED')),
+    CONSTRAINT chk_account_type
+        CHECK (account_type IN ('CUSTOMER', 'SETTLEMENT'))
 );
+
+-- Upgrade for databases created before account_type existed (no-op otherwise).
+ALTER TABLE accounts
+    ADD COLUMN IF NOT EXISTS account_type VARCHAR(20) NOT NULL DEFAULT 'CUSTOMER'
+        CONSTRAINT chk_account_type
+            CHECK (account_type IN ('CUSTOMER', 'SETTLEMENT'));
+
+-- The bank's cash: the other side of every deposit and withdrawal. Only one may exist.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_single_settlement
+    ON accounts (account_type)
+    WHERE account_type = 'SETTLEMENT';
 
 -- 5. Financial transactions
 CREATE TABLE IF NOT EXISTS financial_transactions (
@@ -127,3 +141,41 @@ CREATE INDEX IF NOT EXISTS idx_ledger_account
 
 CREATE INDEX IF NOT EXISTS idx_audit_actor
     ON audit_logs(actor_id);
+
+-- 9. Double-entry guarantee
+-- When a database transaction commits, every financial transaction it wrote
+-- ledger entries for must have equal debit and credit totals. The trigger is
+-- deferred so it runs at commit, after both sides have been written.
+-- The function body uses single quotes because Spring's SQL script runner
+-- does not understand $$ quoting; '' inside it is an escaped quote.
+CREATE OR REPLACE FUNCTION ledgerline_assert_transaction_balanced()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS '
+DECLARE
+    total_debits  NUMERIC;
+    total_credits NUMERIC;
+BEGIN
+    SELECT COALESCE(SUM(amount) FILTER (WHERE entry_type = ''DEBIT''), 0),
+           COALESCE(SUM(amount) FILTER (WHERE entry_type = ''CREDIT''), 0)
+      INTO total_debits, total_credits
+      FROM ledger_entries
+     WHERE transaction_id = NEW.transaction_id;
+
+    IF total_debits <> total_credits THEN
+        RAISE EXCEPTION ''Unbalanced ledger for transaction %: debits % do not equal credits %'',
+            NEW.transaction_id, total_debits, total_credits
+            USING ERRCODE = ''check_violation'';
+    END IF;
+
+    RETURN NULL;
+END;
+';
+
+DROP TRIGGER IF EXISTS trg_ledger_entries_balanced ON ledger_entries;
+
+CREATE CONSTRAINT TRIGGER trg_ledger_entries_balanced
+    AFTER INSERT ON ledger_entries
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    EXECUTE FUNCTION ledgerline_assert_transaction_balanced();
