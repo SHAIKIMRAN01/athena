@@ -3,6 +3,7 @@ package com.ledgerline.entity;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 /**
  * One money movement requested by a user: a deposit, a withdrawal or a transfer.
@@ -37,11 +38,13 @@ public class FinancialTransaction {
     @Column(nullable = false, precision = 19, scale = 2, updatable = false)
     private BigDecimal amount;
 
-    // Reserved for idempotent requests (Day 3).
-    @Column(name = "idempotency_key", length = 100, unique = true)
+    // Unique per user (see uq_transactions_user_idempotency_key): a repeated
+    // request with the same key returns this transaction instead of a new one.
+    @Column(name = "idempotency_key", length = 100, updatable = false)
     private String idempotencyKey;
 
-    @Column(name = "request_hash")
+    // Fingerprint of the request body, to spot a key reused for a different request.
+    @Column(name = "request_hash", updatable = false)
     private String requestHash;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -54,13 +57,16 @@ public class FinancialTransaction {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
-    @Column(name = "failure_reason", columnDefinition = "TEXT")
+    @Column(name = "failure_code", length = 50, updatable = false)
+    private String failureCode;
+
+    @Column(name = "failure_reason", columnDefinition = "TEXT", updatable = false)
     private String failureReason;
 
     protected FinancialTransaction() {}
 
     /**
-     * Creates a transaction that is stored as COMPLETED. It is saved in the same database
+     * A transaction stored as COMPLETED. It is saved in the same database
      * transaction as its ledger entries, so it is never visible without them.
      */
     public static FinancialTransaction completed(
@@ -68,19 +74,60 @@ public class FinancialTransaction {
             Account fromAccount,
             Account toAccount,
             BigDecimal amount,
-            User createdBy) {
+            User createdBy,
+            String idempotencyKey,
+            String requestHash) {
 
-        LocalDateTime now = LocalDateTime.now();
+        FinancialTransaction transaction = create(
+                type, fromAccount, toAccount, amount, createdBy, idempotencyKey, requestHash);
+        transaction.status = TransactionStatus.COMPLETED;
+        transaction.completedAt = transaction.createdAt;
+        return transaction;
+    }
+
+    /**
+     * A rejected attempt (for example insufficient funds), kept for the
+     * customer's history. It has no ledger entries and moved no money.
+     */
+    public static FinancialTransaction failed(
+            TransactionType type,
+            Account fromAccount,
+            Account toAccount,
+            BigDecimal amount,
+            User createdBy,
+            String idempotencyKey,
+            String requestHash,
+            String failureCode,
+            String failureReason) {
+
+        FinancialTransaction transaction = create(
+                type, fromAccount, toAccount, amount, createdBy, idempotencyKey, requestHash);
+        transaction.status = TransactionStatus.FAILED;
+        transaction.failureCode = failureCode;
+        transaction.failureReason = failureReason;
+        return transaction;
+    }
+
+    private static FinancialTransaction create(
+            TransactionType type,
+            Account fromAccount,
+            Account toAccount,
+            BigDecimal amount,
+            User createdBy,
+            String idempotencyKey,
+            String requestHash) {
 
         FinancialTransaction transaction = new FinancialTransaction();
         transaction.type = type;
-        transaction.status = TransactionStatus.COMPLETED;
         transaction.fromAccount = fromAccount;
         transaction.toAccount = toAccount;
         transaction.amount = amount;
         transaction.createdBy = createdBy;
-        transaction.createdAt = now;
-        transaction.completedAt = now;
+        transaction.idempotencyKey = idempotencyKey;
+        transaction.requestHash = requestHash;
+        // PostgreSQL keeps microseconds; truncating here makes the first
+        // response show exactly the time that is stored and replayed later.
+        transaction.createdAt = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
         return transaction;
     }
 
@@ -133,6 +180,10 @@ public class FinancialTransaction {
 
     public LocalDateTime getCompletedAt() {
         return completedAt;
+    }
+
+    public String getFailureCode() {
+        return failureCode;
     }
 
     public String getFailureReason() {

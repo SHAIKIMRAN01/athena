@@ -64,7 +64,20 @@ public class LedgerService {
                 new LedgerEntry(transaction, creditAccount, EntryType.CREDIT, amount));
     }
 
-    private static void applyEntry(
+    /**
+     * True if posting this movement would push either balance past what a
+     * NUMERIC(19,2) column can hold. Lets callers refuse before posting.
+     */
+    public boolean wouldExceedBalanceLimit(
+            Account debitAccount,
+            Account creditAccount,
+            BigDecimal amount) {
+
+        return balanceAfter(debitAccount, EntryType.DEBIT, amount).compareTo(MAX_BALANCE) > 0
+                || balanceAfter(creditAccount, EntryType.CREDIT, amount).compareTo(MAX_BALANCE) > 0;
+    }
+
+    private static BigDecimal balanceAfter(
             Account account,
             EntryType entryType,
             BigDecimal amount) {
@@ -72,9 +85,17 @@ public class LedgerService {
         boolean increasesBalance =
                 entryType == account.getAccountType().getNormalBalance();
 
-        BigDecimal newBalance = increasesBalance
+        return increasesBalance
                 ? account.getBalance().add(amount)
                 : account.getBalance().subtract(amount);
+    }
+
+    private static void applyEntry(
+            Account account,
+            EntryType entryType,
+            BigDecimal amount) {
+
+        BigDecimal newBalance = balanceAfter(account, entryType, amount);
 
         if (newBalance.signum() < 0) {
             // Callers check available funds before posting, so getting here is a

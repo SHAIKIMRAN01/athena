@@ -26,13 +26,16 @@ public class SecurityConfig {
 
     private final CustomUserDetailsService userDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final AuditingAccessDeniedHandler accessDeniedHandler;
 
     public SecurityConfig(
             CustomUserDetailsService userDetailsService,
-            JwtAuthenticationFilter jwtAuthenticationFilter) {
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            AuditingAccessDeniedHandler accessDeniedHandler) {
 
         this.userDetailsService = userDetailsService;
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.accessDeniedHandler = accessDeniedHandler;
     }
 
     @Bean
@@ -81,10 +84,11 @@ public class SecurityConfig {
             )
 
             // Missing, invalid or expired token, or wrong login: 401.
-            // A valid token without the required role still gets 403.
+            // A valid token without the required role: 403, recorded in the audit log.
             .exceptionHandling(exceptions -> exceptions
                 .authenticationEntryPoint(
                     new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                .accessDeniedHandler(accessDeniedHandler)
             )
 
             .formLogin(form -> form.disable())

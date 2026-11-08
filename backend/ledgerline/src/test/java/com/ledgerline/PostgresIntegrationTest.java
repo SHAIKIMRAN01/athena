@@ -2,6 +2,7 @@ package com.ledgerline;
 
 import com.ledgerline.dto.RegisterRequest;
 import com.ledgerline.dto.RegisterResponse;
+import com.ledgerline.entity.TransactionStatus;
 import com.ledgerline.service.AuthService;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -11,7 +12,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -73,6 +82,91 @@ public abstract class PostgresIntegrationTest {
 
     protected long countRows(String table) {
         return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table, Long.class);
+    }
+
+    protected long countTransactions(TransactionStatus status) {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM financial_transactions WHERE status = ?",
+                Long.class, status.name());
+    }
+
+    /**
+     * A fresh Idempotency-Key, as a client would generate one per request.
+     */
+    protected static String newKey() {
+        return UUID.randomUUID().toString();
+    }
+
+    /**
+     * Starts all tasks at the same moment on separate threads and returns
+     * their results in order. A task's exception fails the test.
+     */
+    protected static <T> List<T> runConcurrently(List<Callable<T>> tasks) throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(Math.min(tasks.size(), 8));
+        CountDownLatch start = new CountDownLatch(1);
+
+        try {
+            List<Future<T>> futures = new ArrayList<>();
+            for (Callable<T> task : tasks) {
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    return task.call();
+                }));
+            }
+
+            start.countDown();
+
+            List<T> results = new ArrayList<>();
+            for (Future<T> future : futures) {
+                results.add(future.get(60, TimeUnit.SECONDS));
+            }
+            return results;
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    protected record AuditRow(
+            String action,
+            String outcome,
+            Long actorId,
+            Long transactionId,
+            String amount,
+            String fromAccount,
+            String toAccount,
+            String reference,
+            String idempotencyKey,
+            String failureCode,
+            String path) {
+    }
+
+    /**
+     * Every audit record, oldest first, with the interesting JSON details pulled out.
+     */
+    protected List<AuditRow> auditLog() {
+        return jdbcTemplate.query("""
+                SELECT action, outcome, actor_id, entity_id,
+                       details->>'amount' AS amount,
+                       details->>'fromAccount' AS from_account,
+                       details->>'toAccount' AS to_account,
+                       details->>'reference' AS reference,
+                       details->>'idempotencyKey' AS idempotency_key,
+                       details->>'failureCode' AS failure_code,
+                       details->>'path' AS path
+                FROM audit_logs
+                ORDER BY id
+                """, (row, number) -> new AuditRow(
+                row.getString("action"),
+                row.getString("outcome"),
+                row.getObject("actor_id", Long.class),
+                row.getObject("entity_id", Long.class),
+                row.getString("amount"),
+                row.getString("from_account"),
+                row.getString("to_account"),
+                row.getString("reference"),
+                row.getString("idempotency_key"),
+                row.getString("failure_code"),
+                row.getString("path")));
     }
 
     /**

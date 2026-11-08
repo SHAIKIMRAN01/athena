@@ -3,6 +3,7 @@ package com.ledgerline.controller;
 import com.jayway.jsonpath.JsonPath;
 import com.ledgerline.PostgresIntegrationTest;
 import com.ledgerline.dto.RegisterResponse;
+import com.ledgerline.entity.TransactionStatus;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -17,6 +18,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
@@ -24,6 +26,7 @@ import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,6 +49,7 @@ class TransactionControllerIntegrationTest extends PostgresIntegrationTest {
                 {"amount": 1000.00}
                 """)
                 .andExpect(status().isCreated())
+                .andExpect(header().string("Idempotent-Replayed", "false"))
                 .andExpect(jsonPath("$.type").value("DEPOSIT"))
                 .andExpect(jsonPath("$.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.reference").value(startsWith("TXN")))
@@ -85,10 +89,15 @@ class TransactionControllerIntegrationTest extends PostgresIntegrationTest {
                 {"amount": 1.00}
                 """)
                 .andExpect(status().is(422))
+                .andExpect(header().string("Idempotent-Replayed", "false"))
                 .andExpect(jsonPath("$.code").value("INSUFFICIENT_FUNDS"))
-                .andExpect(jsonPath("$.detail").value("Insufficient funds for this transaction"));
+                .andExpect(jsonPath("$.detail").value("Insufficient funds for this transaction"))
+                // The refused attempt was saved as a FAILED transaction with a reference.
+                .andExpect(jsonPath("$.reference").value(startsWith("TXN")));
 
-        assertThat(countRows("financial_transactions")).isZero();
+        assertThat(countTransactions(TransactionStatus.FAILED)).isEqualTo(1);
+        assertThat(countTransactions(TransactionStatus.COMPLETED)).isZero();
+        assertThat(countRows("ledger_entries")).isZero();
     }
 
     @Test
@@ -227,11 +236,18 @@ class TransactionControllerIntegrationTest extends PostgresIntegrationTest {
                 .andExpect(status().isForbidden());
 
         assertThat(countRows("financial_transactions")).isZero();
+        assertThat(auditLog())
+                .extracting(AuditRow::action, AuditRow::outcome, AuditRow::actorId, AuditRow::path)
+                .containsExactly(tuple("ACCESS_DENIED", "DENIED", auditor.getUserId(), DEPOSIT));
     }
 
+    /**
+     * Sends a money request with a fresh Idempotency-Key.
+     */
     private ResultActions call(String endpoint, String token, String json) throws Exception {
         return mockMvc.perform(post(endpoint)
                 .header(AUTHORIZATION, "Bearer " + token)
+                .header("Idempotency-Key", newKey())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json));
     }

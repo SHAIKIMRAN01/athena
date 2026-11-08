@@ -28,15 +28,12 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
@@ -130,10 +127,14 @@ class TransactionServiceIntegrationTest extends PostgresIntegrationTest {
         deposit(alice, "100.00");
 
         assertThatThrownBy(() -> withdraw(alice, "100.01"))
-                .isInstanceOf(InsufficientFundsException.class);
+                .isInstanceOf(InsufficientFundsException.class)
+                .satisfies(refusal -> assertThat(((InsufficientFundsException) refusal)
+                        .getReference()).startsWith("TXN"));
 
         assertThat(balanceOf(alice.getAccountNumber())).isEqualByComparingTo("100.00");
-        assertThat(countRows("financial_transactions")).isEqualTo(1);
+        // The refused attempt is kept for the history, but moved no money.
+        assertThat(countTransactions(TransactionStatus.COMPLETED)).isEqualTo(1);
+        assertThat(countTransactions(TransactionStatus.FAILED)).isEqualTo(1);
         assertThat(countRows("ledger_entries")).isEqualTo(2);
         assertLedgerIsConsistent();
     }
@@ -186,7 +187,8 @@ class TransactionServiceIntegrationTest extends PostgresIntegrationTest {
 
         assertThat(balanceOf(alice.getAccountNumber())).isEqualByComparingTo("10.00");
         assertThat(balanceOf(bob.getAccountNumber())).isEqualByComparingTo("0.00");
-        assertThat(countRows("financial_transactions")).isEqualTo(1);
+        assertThat(countTransactions(TransactionStatus.COMPLETED)).isEqualTo(1);
+        assertThat(countTransactions(TransactionStatus.FAILED)).isEqualTo(1);
         assertLedgerIsConsistent();
     }
 
@@ -268,7 +270,9 @@ class TransactionServiceIntegrationTest extends PostgresIntegrationTest {
 
         assertThat(balanceOf(alice.getAccountNumber())).isEqualByComparingTo("100.00");
         assertThat(balanceOf(bob.getAccountNumber())).isEqualByComparingTo("100.00");
-        assertThat(countRows("financial_transactions")).isEqualTo(2);
+        assertThat(countTransactions(TransactionStatus.COMPLETED)).isEqualTo(2);
+        assertThat(countTransactions(TransactionStatus.FAILED)).isEqualTo(4);
+        assertLedgerIsConsistent();
     }
 
     // ---------------------------------------------------------------- integrity
@@ -297,6 +301,14 @@ class TransactionServiceIntegrationTest extends PostgresIntegrationTest {
         assertThat(countRows("financial_transactions")).isEqualTo(1);
         assertThat(countRows("ledger_entries")).isEqualTo(2);
         assertLedgerIsConsistent();
+
+        // The rollback also removed the transfer's COMPLETED audit record; the
+        // error was then recorded in a transaction of its own.
+        assertThat(auditLog())
+                .extracting(AuditRow::action, AuditRow::outcome, AuditRow::failureCode)
+                .containsExactly(
+                        tuple("DEPOSIT", "COMPLETED", null),
+                        tuple("TRANSFER", "ERROR", "INTERNAL_ERROR"));
     }
 
     @Test
@@ -361,7 +373,8 @@ class TransactionServiceIntegrationTest extends PostgresIntegrationTest {
         assertThat(balanceOf(bob.getAccountNumber())).isEqualByComparingTo("149.75");
         assertThat(balanceOf(carol.getAccountNumber())).isEqualByComparingTo("600.00");
         assertThat(balanceOf(SETTLEMENT_ACCOUNT)).isEqualByComparingTo("749.75");
-        assertThat(countRows("financial_transactions")).isEqualTo(6);
+        assertThat(countTransactions(TransactionStatus.COMPLETED)).isEqualTo(6);
+        assertThat(countTransactions(TransactionStatus.FAILED)).isEqualTo(1);
         assertThat(countRows("ledger_entries")).isEqualTo(12);
         assertLedgerIsConsistent();
     }
@@ -386,7 +399,70 @@ class TransactionServiceIntegrationTest extends PostgresIntegrationTest {
 
         assertThat(outcomes).filteredOn(succeeded -> succeeded).hasSize(5);
         assertThat(balanceOf(alice.getAccountNumber())).isEqualByComparingTo("0.00");
-        assertThat(countRows("financial_transactions")).isEqualTo(6);
+        assertThat(countTransactions(TransactionStatus.COMPLETED)).isEqualTo(6);
+        assertThat(countTransactions(TransactionStatus.FAILED)).isEqualTo(5);
+        assertLedgerIsConsistent();
+    }
+
+    @Test
+    void concurrentTransfersFromOneAccountCannotOverdrawIt() throws Exception {
+        RegisterResponse alice = register("Alice");
+        RegisterResponse bob = register("Bob");
+        deposit(alice, "500.00");
+
+        List<Callable<Boolean>> transfers = Collections.nCopies(10, () -> {
+            try {
+                transfer(alice, bob.getAccountNumber(), "100.00");
+                return true;
+            } catch (InsufficientFundsException rejected) {
+                return false;
+            }
+        });
+
+        List<Boolean> outcomes = runConcurrently(transfers);
+
+        assertThat(outcomes).filteredOn(succeeded -> succeeded).hasSize(5);
+        assertThat(balanceOf(alice.getAccountNumber())).isEqualByComparingTo("0.00");
+        assertThat(balanceOf(bob.getAccountNumber())).isEqualByComparingTo("500.00");
+        assertThat(countTransactions(TransactionStatus.FAILED)).isEqualTo(5);
+        assertLedgerIsConsistent();
+    }
+
+    @Test
+    void balancesStayConsistentUnderConcurrentMixedActivity() throws Exception {
+        List<RegisterResponse> users = List.of(register("Alice"), register("Bob"), register("Carol"));
+        for (RegisterResponse user : users) {
+            deposit(user, "1000.00");
+        }
+
+        Random random = new Random(42);
+        List<Callable<Boolean>> operations = new ArrayList<>();
+        for (int i = 0; i < 60; i++) {
+            RegisterResponse user = users.get(random.nextInt(users.size()));
+            RegisterResponse other = users.get((users.indexOf(user) + 1 + random.nextInt(2)) % users.size());
+            String amount = (1 + random.nextInt(300)) + "." + (10 + random.nextInt(90));
+            int kind = random.nextInt(3);
+            operations.add(() -> {
+                try {
+                    switch (kind) {
+                        case 0 -> deposit(user, amount);
+                        case 1 -> withdraw(user, amount);
+                        default -> transfer(user, other.getAccountNumber(), amount);
+                    }
+                    return true;
+                } catch (InsufficientFundsException refused) {
+                    return false;
+                }
+            });
+        }
+
+        List<Boolean> outcomes = runConcurrently(operations);
+
+        // Every request either completed or was refused and recorded; none vanished.
+        assertThat(countTransactions(TransactionStatus.COMPLETED))
+                .isEqualTo(3 + outcomes.stream().filter(ok -> ok).count());
+        assertThat(countTransactions(TransactionStatus.FAILED))
+                .isEqualTo(outcomes.stream().filter(ok -> !ok).count());
         assertLedgerIsConsistent();
     }
 
@@ -417,46 +493,21 @@ class TransactionServiceIntegrationTest extends PostgresIntegrationTest {
 
     // ---------------------------------------------------------------- helpers
 
+    // Each call is a new request with its own Idempotency-Key.
+
     private TransactionResponse deposit(RegisterResponse user, String amount) {
-        return transactionService.deposit(user.getUserId(), new BigDecimal(amount));
+        return transactionService.deposit(
+                user.getUserId(), new BigDecimal(amount), newKey()).transaction();
     }
 
     private TransactionResponse withdraw(RegisterResponse user, String amount) {
-        return transactionService.withdraw(user.getUserId(), new BigDecimal(amount));
+        return transactionService.withdraw(
+                user.getUserId(), new BigDecimal(amount), newKey()).transaction();
     }
 
     private TransactionResponse transfer(
             RegisterResponse sender, String toAccountNumber, String amount) {
         return transactionService.transfer(
-                sender.getUserId(), toAccountNumber, new BigDecimal(amount));
-    }
-
-    /**
-     * Starts all tasks at the same moment on separate threads and returns
-     * their results in order. A task's exception fails the test.
-     */
-    private static <T> List<T> runConcurrently(List<Callable<T>> tasks) throws Exception {
-        ExecutorService executor = Executors.newFixedThreadPool(Math.min(tasks.size(), 8));
-        CountDownLatch start = new CountDownLatch(1);
-
-        try {
-            List<Future<T>> futures = new ArrayList<>();
-            for (Callable<T> task : tasks) {
-                futures.add(executor.submit(() -> {
-                    start.await();
-                    return task.call();
-                }));
-            }
-
-            start.countDown();
-
-            List<T> results = new ArrayList<>();
-            for (Future<T> future : futures) {
-                results.add(future.get(60, TimeUnit.SECONDS));
-            }
-            return results;
-        } finally {
-            executor.shutdownNow();
-        }
+                sender.getUserId(), toAccountNumber, new BigDecimal(amount), newKey()).transaction();
     }
 }

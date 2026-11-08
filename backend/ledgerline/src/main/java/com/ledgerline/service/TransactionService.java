@@ -1,236 +1,128 @@
 package com.ledgerline.service;
 
-import com.ledgerline.dto.TransactionResponse;
-import com.ledgerline.entity.Account;
-import com.ledgerline.entity.AccountType;
-import com.ledgerline.entity.FinancialTransaction;
-import com.ledgerline.entity.TransactionType;
-import com.ledgerline.exception.AccountNotActiveException;
-import com.ledgerline.exception.AccountNotFoundException;
-import com.ledgerline.exception.InsufficientFundsException;
+import com.ledgerline.dto.TransactionResult;
+import com.ledgerline.entity.AuditOutcome;
+import com.ledgerline.exception.BusinessException;
 import com.ledgerline.exception.InvalidTransactionException;
-import com.ledgerline.repository.AccountRepository;
-import com.ledgerline.repository.FinancialTransactionRepository;
-import com.ledgerline.repository.UserRepository;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
-import java.util.stream.LongStream;
+import java.util.regex.Pattern;
 
 /**
- * Deposits, withdrawals and transfers.
+ * Deposits, withdrawals and transfers, each protected by an Idempotency-Key.
  *
- * <p>Each operation runs in one database transaction that:
- * <ol>
- *   <li>locks every account it touches, always in ascending id order, so
- *       concurrent operations wait for each other instead of overwriting each
- *       other's balances, and can never deadlock;</li>
- *   <li>checks the business rules against the locked, current balances;</li>
- *   <li>records the transaction and posts balanced ledger entries.</li>
- * </ol>
- * Any exception rolls the whole operation back: no balance change, no
- * transaction record and no ledger entries are left behind.
+ * <p>The work happens in {@link TransactionProcessor}, in one database
+ * transaction. This class is deliberately not transactional: it runs before
+ * and after that transaction, so it can
+ * <ul>
+ *   <li>throw the refusal of a FAILED transaction only after it was committed,
+ *       so the FAILED record is kept;</li>
+ *   <li>audit requests that were refused before any transaction was saved,
+ *       or that crashed, in a transaction of their own after the rollback.</li>
+ * </ul>
  */
 @Service
 public class TransactionService {
 
-    private final AccountRepository accountRepository;
-    private final FinancialTransactionRepository transactionRepository;
-    private final UserRepository userRepository;
-    private final LedgerService ledgerService;
+    private static final Logger log = LoggerFactory.getLogger(TransactionService.class);
 
-    public TransactionService(
-            AccountRepository accountRepository,
-            FinancialTransactionRepository transactionRepository,
-            UserRepository userRepository,
-            LedgerService ledgerService) {
+    private static final Pattern VISIBLE_ASCII = Pattern.compile("[\\x21-\\x7E]{1,100}");
 
-        this.accountRepository = accountRepository;
-        this.transactionRepository = transactionRepository;
-        this.userRepository = userRepository;
-        this.ledgerService = ledgerService;
+    private final TransactionProcessor processor;
+    private final AuditService auditService;
+
+    public TransactionService(TransactionProcessor processor, AuditService auditService) {
+        this.processor = processor;
+        this.auditService = auditService;
     }
 
-    /**
-     * Cash in: DEBIT the settlement account, CREDIT the user's account.
-     */
-    @Transactional
-    public TransactionResponse deposit(Long userId, BigDecimal requestedAmount) {
+    public TransactionResult deposit(
+            Long userId, BigDecimal amount, String idempotencyKey) {
 
-        BigDecimal amount = toMoney(requestedAmount);
-        long customerId = ownAccountId(userId);
-        long settlementId = settlementAccountId();
-
-        Map<Long, Account> accounts = lockInIdOrder(customerId, settlementId);
-        Account customer = accounts.get(customerId);
-        Account settlement = accounts.get(settlementId);
-
-        requireActive(customer, "Your account is not active");
-        requireActive(settlement, "Deposits and withdrawals are currently unavailable");
-
-        FinancialTransaction transaction = record(
-                TransactionType.DEPOSIT, null, customer, amount, userId);
-        ledgerService.post(transaction, settlement, customer, amount);
-
-        return TransactionResponse.of(transaction, customer);
+        return execute(userId, MoneyRequest.deposit(amount), idempotencyKey);
     }
 
-    /**
-     * Cash out: DEBIT the user's account, CREDIT the settlement account.
-     */
-    @Transactional
-    public TransactionResponse withdraw(Long userId, BigDecimal requestedAmount) {
+    public TransactionResult withdraw(
+            Long userId, BigDecimal amount, String idempotencyKey) {
 
-        BigDecimal amount = toMoney(requestedAmount);
-        long customerId = ownAccountId(userId);
-        long settlementId = settlementAccountId();
-
-        Map<Long, Account> accounts = lockInIdOrder(customerId, settlementId);
-        Account customer = accounts.get(customerId);
-        Account settlement = accounts.get(settlementId);
-
-        requireActive(customer, "Your account is not active");
-        requireActive(settlement, "Deposits and withdrawals are currently unavailable");
-        requireFunds(customer, amount);
-
-        FinancialTransaction transaction = record(
-                TransactionType.WITHDRAWAL, customer, null, amount, userId);
-        ledgerService.post(transaction, customer, settlement, amount);
-
-        return TransactionResponse.of(transaction, customer);
+        return execute(userId, MoneyRequest.withdrawal(amount), idempotencyKey);
     }
 
-    /**
-     * DEBIT the user's account, CREDIT the receiver's account.
-     */
-    @Transactional
-    public TransactionResponse transfer(
-            Long userId,
-            String toAccountNumber,
-            BigDecimal requestedAmount) {
+    public TransactionResult transfer(
+            Long userId, String toAccountNumber, BigDecimal amount, String idempotencyKey) {
 
-        BigDecimal amount = toMoney(requestedAmount);
-        long senderId = ownAccountId(userId);
-        long receiverId = accountRepository
-                .findIdByAccountNumberAndAccountType(
-                        normalizeAccountNumber(toAccountNumber),
-                        AccountType.CUSTOMER)
-                .orElseThrow(() ->
-                        new AccountNotFoundException("Receiver account not found"));
-
-        if (senderId == receiverId) {
-            throw new InvalidTransactionException(
-                    "SAME_ACCOUNT_TRANSFER",
-                    "You cannot transfer money to your own account");
-        }
-
-        Map<Long, Account> accounts = lockInIdOrder(senderId, receiverId);
-        Account sender = accounts.get(senderId);
-        Account receiver = accounts.get(receiverId);
-
-        requireActive(sender, "Your account is not active");
-        requireActive(receiver, "Receiver account is not active");
-        requireFunds(sender, amount);
-
-        FinancialTransaction transaction = record(
-                TransactionType.TRANSFER, sender, receiver, amount, userId);
-        ledgerService.post(transaction, sender, receiver, amount);
-
-        return TransactionResponse.of(transaction, sender);
+        return execute(userId, MoneyRequest.transfer(toAccountNumber, amount), idempotencyKey);
     }
 
-    private FinancialTransaction record(
-            TransactionType type,
-            Account fromAccount,
-            Account toAccount,
-            BigDecimal amount,
-            Long userId) {
+    private TransactionResult execute(Long userId, MoneyRequest request, String rawKey) {
 
-        return transactionRepository.save(FinancialTransaction.completed(
-                type,
-                fromAccount,
-                toAccount,
-                amount,
-                userRepository.getReferenceById(userId)));
-    }
+        String idempotencyKey = requireIdempotencyKey(rawKey);
 
-    /**
-     * Locks the accounts (SELECT ... FOR UPDATE) in ascending id order.
-     * Because every operation locks in the same order, two operations can
-     * never each hold a lock the other is waiting for.
-     */
-    private Map<Long, Account> lockInIdOrder(long... accountIds) {
-
-        Map<Long, Account> locked = new HashMap<>();
-
-        for (long id : LongStream.of(accountIds).sorted().distinct().toArray()) {
-            locked.put(id, accountRepository.findByIdForUpdate(id)
-                    .orElseThrow(() -> new AccountNotFoundException("Account not found")));
-        }
-
-        return locked;
-    }
-
-    private long ownAccountId(Long userId) {
-        return accountRepository.findIdByUserId(userId)
-                .orElseThrow(() ->
-                        new AccountNotFoundException("You do not have an account"));
-    }
-
-    private long settlementAccountId() {
-        return accountRepository.findIdByAccountType(AccountType.SETTLEMENT)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Settlement account is missing; it is created by db/seed.sql"));
-    }
-
-    private static void requireActive(Account account, String message) {
-        if (!account.isActive()) {
-            throw new AccountNotActiveException(message);
-        }
-    }
-
-    private static void requireFunds(Account account, BigDecimal amount) {
-        if (account.getBalance().compareTo(amount) < 0) {
-            throw new InsufficientFundsException();
-        }
-    }
-
-    /**
-     * Checks an amount and gives it exactly 2 decimal places. Never rounds:
-     * an amount with more decimals is rejected.
-     */
-    private static BigDecimal toMoney(BigDecimal amount) {
-
-        if (amount == null || amount.signum() <= 0) {
-            throw new InvalidTransactionException(
-                    "INVALID_AMOUNT", "Amount must be greater than zero");
-        }
-
-        BigDecimal money;
+        ProcessedTransaction processed;
         try {
-            money = amount.setScale(2, RoundingMode.UNNECESSARY);
-        } catch (ArithmeticException moreThanTwoDecimals) {
-            throw new InvalidTransactionException(
-                    "INVALID_AMOUNT", "Amount cannot have more than 2 decimal places");
+            processed = processor.process(userId, request, idempotencyKey);
+        } catch (BusinessException refused) {
+            auditAfterRollback(userId, request, idempotencyKey, AuditOutcome.REJECTED,
+                    refused.getCode(), refused.getMessage());
+            throw refused;
+        } catch (RuntimeException error) {
+            auditAfterRollback(userId, request, idempotencyKey, AuditOutcome.ERROR,
+                    "INTERNAL_ERROR", describe(error));
+            throw error;
         }
 
-        if (money.precision() > 19) {
-            throw new InvalidTransactionException(
-                    "INVALID_AMOUNT", "Amount is too large");
+        if (processed.failure() != null) {
+            // Committed as a FAILED transaction; now tell the caller why.
+            throw processed.failure();
         }
 
-        return money;
+        return new TransactionResult(processed.response(), processed.replayed());
     }
 
-    private static String normalizeAccountNumber(String accountNumber) {
-        return accountNumber == null
-                ? ""
-                : accountNumber.trim().toUpperCase(Locale.ROOT);
+    static String requireIdempotencyKey(String key) {
+
+        if (key == null || key.isBlank()) {
+            throw new InvalidTransactionException("IDEMPOTENCY_KEY_REQUIRED",
+                    "Send an Idempotency-Key header (for example a new UUID) with every money request");
+        }
+
+        String trimmed = key.trim();
+        if (!VISIBLE_ASCII.matcher(trimmed).matches()) {
+            throw new InvalidTransactionException("INVALID_IDEMPOTENCY_KEY",
+                    "Idempotency-Key must be 1 to 100 visible ASCII characters, for example a UUID");
+        }
+
+        return trimmed;
+    }
+
+    private void auditAfterRollback(
+            Long userId,
+            MoneyRequest request,
+            String idempotencyKey,
+            AuditOutcome outcome,
+            String failureCode,
+            String failureReason) {
+
+        Map<String, Object> details = request.auditDetails(idempotencyKey);
+        details.put("failureCode", failureCode);
+        details.put("failureReason", failureReason);
+
+        try {
+            auditService.record(userId, request.type().name(), outcome, null, details);
+        } catch (RuntimeException auditFailure) {
+            // Never hide the original problem behind an audit problem.
+            log.error("Could not write {} audit record for user {}", outcome, userId, auditFailure);
+        }
+    }
+
+    private static String describe(RuntimeException error) {
+        String message = error.getMessage();
+        String text = error.getClass().getSimpleName() + (message == null ? "" : ": " + message);
+        return text.length() > 500 ? text.substring(0, 500) : text;
     }
 }

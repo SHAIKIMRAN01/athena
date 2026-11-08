@@ -29,6 +29,17 @@ public record TransactionResponse(
             FinancialTransaction transaction,
             Account callerAccount) {
 
+        return of(transaction, callerAccount.getBalance());
+    }
+
+    /**
+     * For replays: {@code balanceAfter} is the caller's balance right after
+     * the original transaction, so the replay matches the first response.
+     */
+    public static TransactionResponse of(
+            FinancialTransaction transaction,
+            BigDecimal balanceAfter) {
+
         return new TransactionResponse(
                 transaction.getId(),
                 transaction.getReference(),
@@ -37,7 +48,7 @@ public record TransactionResponse(
                 transaction.getAmount(),
                 accountNumberOf(transaction.getFromAccount()),
                 accountNumberOf(transaction.getToAccount()),
-                callerAccount.getBalance(),
+                balanceAfter,
                 transaction.getCreatedAt(),
                 transaction.getCompletedAt()
         );

@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "LedgerLine - Day 2",
-    "description": "Start the backend on http://localhost:8080, then send the requests in order (or use Run collection). Each request stores the tokens and account numbers the next ones need, and every run registers fresh users, so you can repeat it. The Tests tab of each response shows what was checked.",
+    "name": "LedgerLine API",
+    "description": "Start the backend on http://localhost:8080, then send the requests in order (or use Run collection). Each request stores the tokens and account numbers the next ones need, and every run registers fresh users, so you can repeat it. Money requests send a new Idempotency-Key ({{$guid}}) each time, except in folder 3, which reuses one key on purpose. The Tests tab shows what was checked.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -35,6 +35,14 @@
     },
     {
       "key": "bobToken",
+      "value": ""
+    },
+    {
+      "key": "replayKey",
+      "value": ""
+    },
+    {
+      "key": "replayTransactionId",
       "value": ""
     }
   ],
@@ -268,6 +276,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Idempotent-Replayed is false\", () => pm.expect(pm.response.headers.get(\"Idempotent-Replayed\")).to.eql(\"false\"));",
                   "const tx = pm.response.json();",
                   "pm.test(\"deposit completed\", () => { pm.expect(tx.type).to.eql(\"DEPOSIT\"); pm.expect(tx.status).to.eql(\"COMPLETED\"); });",
                   "pm.test(\"Alice now has 1000.00\", () => pm.expect(tx.balanceAfter).to.eql(1000));"
@@ -281,6 +290,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -324,9 +337,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
-                  "const tx = pm.response.json();",
-                  "pm.test(\"withdrawal completed\", () => pm.expect(tx.type).to.eql(\"WITHDRAWAL\"));",
-                  "pm.test(\"Alice now has 749.50\", () => pm.expect(tx.balanceAfter).to.eql(749.5));"
+                  "pm.test(\"Alice now has 749.50\", () => pm.expect(pm.response.json().balanceAfter).to.eql(749.5));"
                 ]
               }
             }
@@ -337,6 +348,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -380,9 +395,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
-                  "const tx = pm.response.json();",
-                  "pm.test(\"transfer completed\", () => pm.expect(tx.type).to.eql(\"TRANSFER\"));",
-                  "pm.test(\"Alice now has 449.50\", () => pm.expect(tx.balanceAfter).to.eql(449.5));"
+                  "pm.test(\"Alice now has 449.50\", () => pm.expect(pm.response.json().balanceAfter).to.eql(449.5));"
                 ]
               }
             }
@@ -393,6 +406,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -510,18 +527,30 @@
       ]
     },
     {
-      "name": "3 - Requests that must be rejected",
+      "name": "3 - Idempotency (one key, sent twice)",
       "item": [
         {
-          "name": "Withdraw more than the balance (422)",
+          "name": "Deposit 100.00 with a fixed key",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Pick one key for this folder and remember it.",
+                  "pm.collectionVariables.set(\"replayKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"422 Unprocessable Content\", () => pm.response.to.have.status(422));",
-                  "pm.test(\"code is INSUFFICIENT_FUNDS\", () => pm.expect(pm.response.json().code).to.eql(\"INSUFFICIENT_FUNDS\"));"
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Idempotent-Replayed is false\", () => pm.expect(pm.response.headers.get(\"Idempotent-Replayed\")).to.eql(\"false\"));",
+                  "pm.collectionVariables.set(\"replayTransactionId\", pm.response.json().transactionId);",
+                  "pm.test(\"Alice now has 549.50\", () => pm.expect(pm.response.json().balanceAfter).to.eql(549.5));"
                 ]
               }
             }
@@ -532,6 +561,247 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{replayKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/deposit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "deposit"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{aliceToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100.00\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Send the same deposit again (replayed)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Idempotent-Replayed is true\", () => pm.expect(pm.response.headers.get(\"Idempotent-Replayed\")).to.eql(\"true\"));",
+                  "const tx = pm.response.json();",
+                  "pm.test(\"same transaction as before\", () => pm.expect(String(tx.transactionId)).to.eql(String(pm.collectionVariables.get(\"replayTransactionId\"))));",
+                  "pm.test(\"balance unchanged: still 549.50\", () => pm.expect(tx.balanceAfter).to.eql(549.5));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{replayKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/deposit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "deposit"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{aliceToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100.00\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Same key, different amount (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 Unprocessable Content\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"code is IDEMPOTENCY_KEY_REUSED\", () => pm.expect(pm.response.json().code).to.eql(\"IDEMPOTENCY_KEY_REUSED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{replayKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/deposit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "deposit"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{aliceToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 200.00\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Deposit without an Idempotency-Key (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code is IDEMPOTENCY_KEY_REQUIRED\", () => pm.expect(pm.response.json().code).to.eql(\"IDEMPOTENCY_KEY_REQUIRED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/deposit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "deposit"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{aliceToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10.00\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Requests that must be rejected",
+      "item": [
+        {
+          "name": "Withdraw more than the balance (422, saved as FAILED)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 Unprocessable Content\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"code is INSUFFICIENT_FUNDS\", () => pm.expect(pm.response.json().code).to.eql(\"INSUFFICIENT_FUNDS\"));",
+                  "pm.test(\"recorded as a FAILED transaction\", () => pm.expect(pm.response.json().reference).to.match(/^TXN/));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -586,6 +856,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -640,6 +914,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -694,6 +972,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -748,6 +1030,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -802,6 +1088,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -856,6 +1146,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -910,6 +1204,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -963,6 +1261,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "url": {
@@ -1015,6 +1317,337 @@
                 "api",
                 "test",
                 "admin"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{aliceToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - History and statements",
+      "item": [
+        {
+          "name": "Alice's history (newest first)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"5 transactions: 4 completed + 1 failed\", () => pm.expect(page.totalElements).to.eql(5));",
+                  "pm.test(\"newest is the refused withdrawal\", () => pm.expect(page.content[0].status).to.eql(\"FAILED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{aliceToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Only FAILED attempts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"one refused attempt\", () => pm.expect(pm.response.json().totalElements).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?status=FAILED",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "FAILED"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{aliceToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Only deposits, biggest first",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"two deposits\", () => pm.expect(page.totalElements).to.eql(2));",
+                  "pm.test(\"biggest first\", () => pm.expect(page.content[0].amount).to.eql(1000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?type=DEPOSIT&sort=amount,desc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "DEPOSIT"
+                },
+                {
+                  "key": "sort",
+                  "value": "amount,desc"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{aliceToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Two per page",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"2 items on the page\", () => pm.expect(page.content.length).to.eql(2));",
+                  "pm.test(\"3 pages in total\", () => pm.expect(page.totalPages).to.eql(3));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?size=2&page=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "size",
+                  "value": "2"
+                },
+                {
+                  "key": "page",
+                  "value": "0"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{aliceToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bob's history (no failed attempts of others)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"only the incoming transfer\", () => pm.expect(page.totalElements).to.eql(1));",
+                  "pm.test(\"money came in\", () => pm.expect(page.content[0].direction).to.eql(\"IN\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bobToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Alice's statement (this month)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json();",
+                  "pm.test(\"opening balance 0.00\", () => pm.expect(s.openingBalance).to.eql(0));",
+                  "pm.test(\"credits 1100.00\", () => pm.expect(s.totalCredits).to.eql(1100));",
+                  "pm.test(\"debits 550.50\", () => pm.expect(s.totalDebits).to.eql(550.5));",
+                  "pm.test(\"closing balance 549.50\", () => pm.expect(s.closingBalance).to.eql(549.5));",
+                  "pm.test(\"4 lines: failed attempts never appear\", () => pm.expect(s.lines.length).to.eql(4));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts/me/statement",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "accounts",
+                "me",
+                "statement"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{aliceToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Statement with from after to (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code is INVALID_DATE_RANGE\", () => pm.expect(pm.response.json().code).to.eql(\"INVALID_DATE_RANGE\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts/me/statement?from=2026-11-08&to=2026-11-01",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "accounts",
+                "me",
+                "statement"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-11-08"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-11-01"
+                }
               ]
             },
             "auth": {

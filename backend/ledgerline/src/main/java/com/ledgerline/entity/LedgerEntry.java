@@ -5,6 +5,7 @@ import org.hibernate.annotations.Immutable;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 /**
  * One line of the double-entry ledger: a debit or a credit of one account.
@@ -51,7 +52,7 @@ public class LedgerEntry {
         this.account = account;
         this.entryType = entryType;
         this.amount = amount;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
     }
 
     public Long getId() {
