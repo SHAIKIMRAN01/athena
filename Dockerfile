@@ -14,7 +14,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # 2. Build the Spring Boot jar with the React app in classpath:/static ------
-FROM eclipse-temurin:21-jdk AS backend
+FROM eclipse-temurin:25-jdk AS backend
 WORKDIR /backend
 COPY backend/athena/.mvn .mvn
 COPY backend/athena/mvnw backend/athena/pom.xml ./
@@ -24,7 +24,7 @@ COPY --from=frontend /frontend/dist src/main/resources/static
 RUN ./mvnw -B -q package -DskipTests
 
 # 3. Run on a JRE-only image as an unprivileged user -----------------------
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 RUN groupadd --system athena && useradd --system --gid athena --uid 10001 athena
 WORKDIR /app
 COPY --from=backend /backend/target/athena-0.0.1-SNAPSHOT.jar app.jar
