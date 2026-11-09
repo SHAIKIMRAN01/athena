@@ -63,6 +63,7 @@ Everything to read, present, test and deploy is in one folder,
 | [important/STEP_1_VERCEL_PREREQUISITES.md](important/STEP_1_VERCEL_PREREQUISITES.md) | Going live, step 1: the software, accounts, passing tests, secrets and names to have ready |
 | [important/STEP_2_PUSH_TO_GITHUB.md](important/STEP_2_PUSH_TO_GITHUB.md) | Step 2: put all the files on GitHub without secrets, and protect the repository |
 | [important/STEP_3_GITHUB_TO_VERCEL_AND_SECURITY.md](important/STEP_3_GITHUB_TO_VERCEL_AND_SECURITY.md) | Step 3: connect GitHub to Vercel (website) and Render (API and database), go live and handle security |
+| [important/PRODUCTION_READINESS.md](important/PRODUCTION_READINESS.md) | The 19-item go-live checklist (security, configuration, resilience, quality, performance), item by item with proof |
 | [important/DEPLOYMENT.md](important/DEPLOYMENT.md) | Render, Docker and plain Java deployment |
 | [important/Athena-Technology-Overview.pptx](important/Athena-Technology-Overview.pptx) | A 16-slide deck: each technology and its job, with speaker notes |
 | [important/DEMO.md](important/DEMO.md) | Demo accounts, a 7-minute demo script, test scenarios, screenshots |
@@ -129,6 +130,7 @@ To get the demo users, set `DEMO_DATA_ENABLED=true` and the three
 | `REGISTRATION_LIMIT_PER_HOUR` | no | `50` | Registrations per client IP per hour |
 | `LOGIN_MAX_FAILURES_PER_ACCOUNT_AND_IP` | no | `5` | Failed logins before a 15-minute pause |
 | `LOGIN_MAX_FAILURES_PER_IP` / `_PER_ACCOUNT` | no | `30` / `50` | Wider login limits |
+| `LOGIN_LOCKOUT_MINUTES` | no | `15` | How long a sign-in pause lasts |
 | `MAX_REQUEST_BYTES` | no | `16384` | Largest accepted request body |
 | `DEMO_DATA_ENABLED` | no | `false` | Create the demo users |
 | `DEMO_ADMIN_PASSWORD` / `DEMO_AUDITOR_PASSWORD` / `DEMO_USER_PASSWORD` | if demo | – | 12+ characters with a letter and a digit |
@@ -146,7 +148,7 @@ athena/
 ├─ backend/athena/            Spring Boot API
 │  ├─ src/main/java           the code (controller, service, repository, entity, security, ...)
 │  ├─ src/main/resources/db   schema.sql (tables, constraints, ledger trigger), seed.sql
-│  └─ src/test                159 backend tests
+│  └─ src/test                165 backend tests
 ├─ frontend/                  React website
 │  ├─ src                     pages, components, API client (unit tests sit next to the code)
 │  ├─ e2e                     Playwright browser tests
@@ -160,7 +162,7 @@ athena/
 
 ## Test results (2026-11-08)
 
-Backend **159/159** · Frontend unit **58/58** · Postman **75/75** ·
+Backend **165/165** · Frontend unit **60/60** · Postman **75/75** ·
 Browser tests **38/38** in six setups (desktop, tablet and phone; Chrome/Edge,
 Firefox, Safari) · Security check **21/21** (**23/23** with the website on a
 separate origin, as on Vercel), with the ledger consistent afterwards. Details: [important/testing/TEST_RESULTS.md](important/testing/TEST_RESULTS.md).

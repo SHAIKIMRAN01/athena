@@ -48,7 +48,9 @@ export default function AppLayout() {
 
   return (
     <div className="shell">
-      <a className="skip-link" href="#main">Skip to content</a>
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
       <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
         <div className="brand">
           <BrandMark size={32} />
@@ -85,12 +87,12 @@ export default function AppLayout() {
               <span className="user-name">{user?.fullName}</span>
               <span className="user-email">{user?.email}</span>
               <span className="user-roles">
-                {user?.roles?.map((role) => <RoleBadge key={role} role={role} />)}
+                {user?.roles?.map((role) => (
+                  <RoleBadge key={role} role={role} />
+                ))}
               </span>
             </div>
-            {minutesLeft !== null && (
-              <p className="session-note">Session ends in {minutesLeft} min</p>
-            )}
+            {minutesLeft !== null && <p className="session-note">Session ends in {minutesLeft} min</p>}
             <button type="button" className="button button-ghost button-block" onClick={signOut}>
               Sign out
             </button>

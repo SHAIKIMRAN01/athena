@@ -6,8 +6,12 @@ export default function ForbiddenPage() {
   return (
     <div className="message-page">
       <h1>No access</h1>
-      <p>Your role does not allow this page. The server refuses its data too, and records such attempts in the audit log.</p>
-      <Link to={homePathFor(user)} className="button button-primary">Go to your start page</Link>
+      <p>
+        Your role does not allow this page. The server refuses its data too, and records such attempts in the audit log.
+      </p>
+      <Link to={homePathFor(user)} className="button button-primary">
+        Go to your start page
+      </Link>
     </div>
   )
 }
@@ -17,7 +21,9 @@ export function NotFoundPage() {
     <div className="message-page">
       <h1>Page not found</h1>
       <p>There is nothing at this address.</p>
-      <Link to="/" className="button button-primary">Go home</Link>
+      <Link to="/" className="button button-primary">
+        Go home
+      </Link>
     </div>
   )
 }

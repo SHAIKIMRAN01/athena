@@ -66,20 +66,20 @@
 		<dependency>
     <groupId>io.jsonwebtoken</groupId>
     <artifactId>jjwt-api</artifactId>
-    <version>0.12.6</version>
+    <version>0.13.0</version>
 </dependency>
 
 <dependency>
     <groupId>io.jsonwebtoken</groupId>
     <artifactId>jjwt-impl</artifactId>
-    <version>0.12.6</version>
+    <version>0.13.0</version>
     <scope>runtime</scope>
 </dependency>
 
 <dependency>
     <groupId>io.jsonwebtoken</groupId>
     <artifactId>jjwt-jackson</artifactId>
-    <version>0.12.6</version>
+    <version>0.13.0</version>
     <scope>runtime</scope>
 </dependency>
 		<dependency>
@@ -101,6 +101,19 @@
 
 	<build>
 		<plugins>
+			<!-- Every compiler warning is shown, and any warning fails the build.
+			     "serial" is left out: exceptions here are never Java-serialized. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<showWarnings>true</showWarnings>
+					<failOnWarning>true</failOnWarning>
+					<compilerArgs>
+						<arg>-Xlint:all,-processing,-serial</arg>
+					</compilerArgs>
+				</configuration>
+			</plugin>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>

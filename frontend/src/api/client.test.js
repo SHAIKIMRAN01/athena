@@ -21,7 +21,11 @@ describe('toApiError', () => {
       response: {
         status: 422,
         headers: {},
-        data: { detail: 'Insufficient funds for this transaction', code: 'INSUFFICIENT_FUNDS', reference: 'TXN0000000007' },
+        data: {
+          detail: 'Insufficient funds for this transaction',
+          code: 'INSUFFICIENT_FUNDS',
+          reference: 'TXN0000000007',
+        },
       },
     })
     expect(error.status).toBe(422)
@@ -38,7 +42,13 @@ describe('toApiError', () => {
   })
 
   it('mentions the wait for throttled requests', () => {
-    const error = toApiError({ response: { status: 429, headers: { 'retry-after': '600' }, data: { detail: 'Too many failed sign-in attempts.', code: 'LOGIN_THROTTLED' } } })
+    const error = toApiError({
+      response: {
+        status: 429,
+        headers: { 'retry-after': '600' },
+        data: { detail: 'Too many failed sign-in attempts.', code: 'LOGIN_THROTTLED' },
+      },
+    })
     expect(error.retryAfter).toBe(600)
     expect(error.message).toContain('10 min')
   })

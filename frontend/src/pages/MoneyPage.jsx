@@ -162,10 +162,7 @@ export default function MoneyPage() {
         )}
 
         {error && (
-          <Alert
-            error={error}
-            title={error.outcomeUnknown ? 'We could not confirm this request' : 'Not done'}
-          />
+          <Alert error={error} title={error.outcomeUnknown ? 'We could not confirm this request' : 'Not done'} />
         )}
         {error?.outcomeUnknown && (
           <p className="hint">
@@ -204,7 +201,11 @@ export default function MoneyPage() {
             {fieldErrors.amount && <small className="field-error">{fieldErrors.amount}</small>}
           </label>
 
-          <button type="submit" className="button button-primary button-block" disabled={busy || account.data?.status === 'FROZEN'}>
+          <button
+            type="submit"
+            className="button button-primary button-block"
+            disabled={busy || account.data?.status === 'FROZEN'}
+          >
             {busy ? 'Working…' : operation.verb}
           </button>
           {account.data?.status === 'FROZEN' && (

@@ -34,7 +34,9 @@ export function formatMoney(value, { sign = false } = {}) {
  * Returns { value: "250.50" } with exactly two decimals, or { error: "..." }.
  */
 export function parseAmountInput(input) {
-  const text = String(input ?? '').trim().replaceAll(',', '')
+  const text = String(input ?? '')
+    .trim()
+    .replaceAll(',', '')
 
   if (text === '') return { error: 'Enter an amount.' }
   if (!AMOUNT_PATTERN.test(text)) {

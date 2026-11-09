@@ -11,7 +11,14 @@ export function csvCell(value) {
 export function statementCsv(statement) {
   const rows = [
     ['Date', 'Reference', 'Description', 'Credit', 'Debit', 'Balance'],
-    ...statement.lines.map((line) => [line.date, line.reference, line.description, line.credit ?? '', line.debit ?? '', line.balanceAfter]),
+    ...statement.lines.map((line) => [
+      line.date,
+      line.reference,
+      line.description,
+      line.credit ?? '',
+      line.debit ?? '',
+      line.balanceAfter,
+    ]),
   ]
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n')
 }

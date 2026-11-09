@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { validateRegistration } from './validation'
 
-const valid = { fullName: 'Anaïs D\'Souza-Rao', email: 'anais@example.com', password: 'Secret123', confirm: 'Secret123' }
+const valid = { fullName: "Anaïs D'Souza-Rao", email: 'anais@example.com', password: 'Secret123', confirm: 'Secret123' }
 
 it('accepts a valid registration, including accented names', () => {
   expect(validateRegistration(valid)).toEqual({})

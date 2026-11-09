@@ -43,7 +43,9 @@ it('signs in and opens the start page for the role', async () => {
 
 it('shows the server message and clears the password when sign-in fails', async () => {
   const signIn = renderLogin()
-  signIn.mockRejectedValue(new ApiError({ status: 401, code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect' }))
+  signIn.mockRejectedValue(
+    new ApiError({ status: 401, code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect' }),
+  )
 
   await userEvent.type(screen.getByLabelText('Email'), 'alice@example.com')
   await userEvent.type(screen.getByLabelText('Password'), 'wrong')

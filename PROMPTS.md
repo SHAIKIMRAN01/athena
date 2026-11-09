@@ -87,6 +87,7 @@ listed.
 | Renaming LedgerLine to Athena in the seed script would, in a database created before the rename, have left the cash account under its old number and added a second system user with no account (the single-settlement index stopped a second cash account). | Inconsistent books for anyone who kept an old database. | `seed.sql` renames the old system user and settlement account in place; `RenameCarryOverIntegrationTest`; the whole backend suite also ran against a real pre-rename database (159 / 159). |
 | On tablets and phones, a short page stretched the new top bar to fill the screen: the CSS grid shared the spare height between its rows. | Seen only in Safari-engine screenshots; Chromium's full-page screenshots hid it. | `grid-template-rows: auto 1fr` for the top-bar layout. |
 | Account numbers and references broke in the middle inside tables on tablets. | Hard to read, easy to mistype. | Codes stay on one line in tables, and tables become two-column cards on tablets. |
+| Checked against a go-live checklist, the list pages ran one or two extra database queries per row (N + 1): the user list took 13 statements for 4 users and 33 for 14. | Pages slow down and the database works harder as data grows. | Hibernate batch fetching, and users loaded with their accounts in one query. `ListQueryCountIntegrationTest` proves 2 rows and 12 rows take the same number of statements. |
 
 ### 3.4 Proving the tests can catch real bugs (deliberate)
 

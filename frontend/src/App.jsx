@@ -28,15 +28,77 @@ export default function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/" element={<Home />} />
 
-      <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
-        <Route path="/dashboard" element={<RequireAuth roles={customer}><DashboardPage /></RequireAuth>} />
-        <Route path="/move-money" element={<RequireAuth roles={customer}><MoneyPage /></RequireAuth>} />
-        <Route path="/history" element={<RequireAuth roles={customer}><HistoryPage /></RequireAuth>} />
-        <Route path="/statement" element={<RequireAuth roles={customer}><StatementPage /></RequireAuth>} />
-        <Route path="/oversight" element={<RequireAuth roles={staff}><OverviewPage /></RequireAuth>} />
-        <Route path="/oversight/transactions" element={<RequireAuth roles={staff}><MonitoringPage /></RequireAuth>} />
-        <Route path="/oversight/audit-log" element={<RequireAuth roles={staff}><AuditLogPage /></RequireAuth>} />
-        <Route path="/admin/users" element={<RequireAuth roles={['ADMIN']}><AdminUsersPage /></RequireAuth>} />
+      <Route
+        element={
+          <RequireAuth>
+            <AppLayout />
+          </RequireAuth>
+        }
+      >
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAuth roles={customer}>
+              <DashboardPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/move-money"
+          element={
+            <RequireAuth roles={customer}>
+              <MoneyPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/history"
+          element={
+            <RequireAuth roles={customer}>
+              <HistoryPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/statement"
+          element={
+            <RequireAuth roles={customer}>
+              <StatementPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/oversight"
+          element={
+            <RequireAuth roles={staff}>
+              <OverviewPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/oversight/transactions"
+          element={
+            <RequireAuth roles={staff}>
+              <MonitoringPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/oversight/audit-log"
+          element={
+            <RequireAuth roles={staff}>
+              <AuditLogPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <RequireAuth roles={['ADMIN']}>
+              <AdminUsersPage />
+            </RequireAuth>
+          }
+        />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

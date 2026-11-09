@@ -8,7 +8,7 @@ row also names the black-box check (S1, A1, Z1…) in
 attack over HTTP to a running server.
 
 > How to verify everything below yourself:
-> `mvnw test` (backend, 159 tests) and
+> `mvnw test` (backend, 165 tests) and
 > `node important/testing/security-check.mjs <your-url>` (21 black-box checks).
 > The last local run is in [important/testing/SECURITY_CHECK_REPORT.md](important/testing/SECURITY_CHECK_REPORT.md).
 

@@ -13,7 +13,12 @@ vi.mock('../api/athena', () => ({
   transfer: vi.fn(),
 }))
 
-const ACCOUNT = { accountNumber: 'ATAAAAAAAAAAAA', balance: '500.00', status: 'ACTIVE', createdAt: '2026-11-01T10:00:00' }
+const ACCOUNT = {
+  accountNumber: 'ATAAAAAAAAAAAA',
+  balance: '500.00',
+  status: 'ACTIVE',
+  createdAt: '2026-11-01T10:00:00',
+}
 
 function transaction(amount, balanceAfter) {
   return {
@@ -131,7 +136,9 @@ describe('MoneyPage', () => {
     await userEvent.type(screen.getByLabelText('Amount (₹)'), '5')
     await userEvent.click(screen.getByRole('button', { name: 'Send' }))
 
-    expect(await screen.findByText('Account numbers look like AT followed by 12 letters or digits.')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Account numbers look like AT followed by 12 letters or digits.'),
+    ).toBeInTheDocument()
     expect(athena.transfer).not.toHaveBeenCalled()
   })
 

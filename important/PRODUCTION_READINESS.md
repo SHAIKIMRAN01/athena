@@ -1,0 +1,61 @@
+# Production readiness: the go-live checklist, item by item
+
+Every item of a common go-live checklist, whether it applies to Athena, what
+is in place, and where the proof is (a file, a test or a check). Checked on
+9 November 2026; the latest results are in
+[testing/TEST_RESULTS.md](testing/TEST_RESULTS.md).
+
+All 19 items apply to Athena. Item 11 applies only in part: Athena calls no
+third-party services, so its timeouts and retries protect its own calls (the
+website to the API, the API to the database).
+
+## Security
+
+| # | Item | Status | What Athena does | Proof |
+| --- | --- | --- | --- | --- |
+| 1 | No hard-coded secrets, keys or passwords; `.env` + `.gitignore` | Done | Every secret comes from the environment: `JWT_SECRET`, `DB_PASSWORD`, the `DEMO_*` passwords. `application.properties` holds placeholders only. `.gitignore` blocks `.env` files (not the examples) and key, certificate and credential files in any folder. GitHub secret scanning and push protection are switched on in [Step 2](STEP_2_PUSH_TO_GITHUB.md). CI makes throwaway secrets for each run. | [`.gitignore`](../.gitignore), [`application.properties`](../backend/athena/src/main/resources/application.properties) |
+| 2 | Inputs validated and sanitized (SQL injection, XSS, command injection) | Done | Every request body is validated: exact decimal amounts with limits, account number and Idempotency-Key formats, names without markup. Sort fields come from a whitelist, search text is only ever a bound parameter, and LIKE wildcards are escaped. The website never inserts raw HTML, React escapes all output, and CSV cells are protected against spreadsheet formulas. The app runs no shell commands, so command injection has no way in. | [`QuerySupport.java`](../backend/athena/src/main/java/com/athena/service/QuerySupport.java), [`csv.js`](../frontend/src/lib/csv.js); `HttpHardeningIntegrationTest`; security check I1–I4 |
+| 3 | Authentication and authorization on every sensitive route | Done | Every `/api/**` route needs a valid token, except register, login and health. `/api/admin/**` is for ADMIN only, and `/api/oversight/**` for ADMIN or AUDITOR. A customer only ever sees their own account and transactions, and the sender is always the signed-in user. Tokens can be revoked, and a disabled user is refused at once. | [`SecurityConfig.java`](../backend/athena/src/main/java/com/athena/security/SecurityConfig.java); `AccessControlIntegrationTest`, `SessionSecurityIntegrationTest`; security check A1–A5, Z1–Z4 |
+| 4 | Dependencies up to date, free of known CVEs | Done | `npm audit`: 0 vulnerabilities, and CI fails on any high one. The 91 Java libraries the app ships were checked against OSV.dev: none known on 2026-11-09. Spring Boot 4.1.2 is the newest stable release; JJWT went from 0.12.6 to 0.13.0 and the React plugin to 6.3.0. In CI, Trivy scans the Docker image (system packages, the Java runtime and every library in the jar) and fails on a high or critical problem that has a fix. Dependabot proposes updates every week for Maven, npm, GitHub Actions and the Docker base images. | [`ci.yml`](../.github/workflows/ci.yml) (`npm audit`, Trivy), [`dependabot.yml`](../.github/dependabot.yml) |
+| 5 | CORS, CSP and security headers | Done | CORS is closed unless the website's exact address is listed, never `*.vercel.app`. A strict CSP is sent as a header by the API and as a meta tag on Vercel. Every answer also carries HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy` and `Permissions-Policy`. | [`SecurityConfig.java`](../backend/athena/src/main/java/com/athena/security/SecurityConfig.java), [`vercel.json`](../frontend/vercel.json), [`csp.js`](../frontend/src/lib/csp.js); `CorsIntegrationTest`; security check S1, S2, C1, C2 |
+
+## Configuration and deployment
+
+| # | Item | Status | What Athena does | Proof |
+| --- | --- | --- | --- | --- |
+| 6 | `.env.example` documents every required variable | Done | [`.env.example`](../.env.example) lists all 23 settings the API reads: the required ones first, the optional ones commented out with their defaults. [`frontend/.env.example`](../frontend/.env.example) lists the website's two. Docker Compose passes `.env` to the app. | README, "Environment variables" |
+| 7 | Production config separate from development (no debug mode, sensible logging) | Done | The defaults are the production-safe ones: no stack traces or exception messages in answers, SQL logging off, the schema validated but never changed by Hibernate, `open-in-view` off, demo users off, no source maps in the website build. Spring DevTools runs only with `mvnw spring-boot:run`; it is left out of the jar and the Docker image. Logging is at INFO. | [`application.properties`](../backend/athena/src/main/resources/application.properties), [`pom.xml`](../backend/athena/pom.xml), [`vite.config.js`](../frontend/vite.config.js) |
+| 8 | Database migrations and seed scripts ready for a clean deploy | Done | `schema.sql` and `seed.sql` run at every start and are safe to repeat (`IF NOT EXISTS`, `ON CONFLICT`). A new database is built from nothing, and an older one is upgraded in place. Every backend test run, and every browser run on a fresh database, starts from these scripts. | [`db/schema.sql`](../backend/athena/src/main/resources/db/schema.sql), [`db/seed.sql`](../backend/athena/src/main/resources/db/seed.sql); `RenameCarryOverIntegrationTest` |
+| 9 | Ports, hostnames and secrets injected at runtime, not baked into the image | Done | The Docker image holds no secret and no address. `PORT`, `DB_*`, `JWT_SECRET` and `CORS_ALLOWED_ORIGINS` come from the environment, and Render fills `DB_*` from its database. The website's API address is fixed when Vercel builds it, by design: it is a public address, not a secret. | [`Dockerfile`](../Dockerfile), [`render.yaml`](../render.yaml) |
+
+## Resilience
+
+| # | Item | Status | What Athena does | Proof |
+| --- | --- | --- | --- | --- |
+| 10 | A global error handler returns safe answers | Done | **API:** one handler turns every exception into a JSON problem with a reason code; an unexpected error answers 500 with a random `errorId` that is also in the server log, never with a stack trace. **Website:** an error boundary shows a calm page with Reload and Start page buttons instead of a blank screen. | [`GlobalExceptionHandler.java`](../backend/athena/src/main/java/com/athena/exception/GlobalExceptionHandler.java), [`ErrorBoundary.jsx`](../frontend/src/components/ErrorBoundary.jsx); `ErrorBoundary.test.jsx`; security check I4 |
+| 11 | Calls to other systems have timeouts, retries and fallbacks | Done (no third-party APIs) | **Website to API:** calls time out after 15 s. Money requests can be retried safely, because a retry reuses the same Idempotency-Key. The session check on page load tries 3 more times when the server cannot be reached, and every failure shows a readable message. **API to database:** it waits at most 10 s for a connection, and any statement is stopped after 15 s, so a stuck query cannot hold up everyone else. | [`client.js`](../frontend/src/api/client.js), [`AuthContext.jsx`](../frontend/src/auth/AuthContext.jsx), [`application.properties`](../backend/athena/src/main/resources/application.properties); `AuthContext.test.jsx`, `ProductionSettingsIntegrationTest` |
+| 12 | Graceful shutdown handles requests in flight | Done | On a redeploy the server stops taking new requests and lets the ones in flight finish, for up to 20 s (inside Render's 30 s). Java runs as process 1 in the container, so it gets the stop signal. Money moves only inside database transactions, so an interrupted request never leaves half a transfer. | `server.shutdown=graceful` and `spring.lifecycle.timeout-per-shutdown-phase=20s`; exec-form `ENTRYPOINT` in the Dockerfile; `ProductionSettingsIntegrationTest` |
+| 13 | A health-check endpoint for load balancers | Done | `GET /api/health` answers `UP` after asking the database, or `503 DOWN`. Render checks it before sending traffic, and CI waits for it. | [`HealthController.java`](../backend/athena/src/main/java/com/athena/controller/HealthController.java), [`render.yaml`](../render.yaml) |
+
+## Testing and code quality
+
+| # | Item | Status | What Athena does | Proof |
+| --- | --- | --- | --- | --- |
+| 14 | Critical paths have automated tests (unit and integration) | Done | 165 backend integration tests on a real PostgreSQL, 60 website unit tests, 38 browser tests in six setups (desktop, tablet and phone; Chrome or Edge, Firefox, Safari), 75 Postman checks and 21 black-box security checks. | [testing/TESTING.md](testing/TESTING.md), [testing/TEST_RESULTS.md](testing/TEST_RESULTS.md) |
+| 15 | Linting and formatting pass in CI | Done | **Website:** oxlint, then a Prettier formatting check. **Java:** every compiler warning is switched on, and any warning fails the build. `.editorconfig` gives every editor the same basic settings. Java layout itself is not enforced by a tool, because that would reformat every Java file; it follows one consistent style. | [`.oxlintrc.json`](../frontend/.oxlintrc.json), [`.prettierrc.json`](../frontend/.prettierrc.json), [`pom.xml`](../backend/athena/pom.xml), [`.editorconfig`](../.editorconfig), [`ci.yml`](../.github/workflows/ci.yml) |
+| 16 | No `console.log` or debug statements in production code | Done | There are none in the website or the API, and the lint now fails the build on any `console` call or `debugger`. The API logs through SLF4J only. | [`.oxlintrc.json`](../frontend/.oxlintrc.json) |
+
+## Performance
+
+| # | Item | Status | What Athena does | Proof |
+| --- | --- | --- | --- | --- |
+| 17 | No N+1 queries on hot paths | Done (fixed 2026-11-09) | Measured first: the list pages ran extra queries for every row. The admin user list went from 13 statements for 4 users to 33 for 14; transaction monitoring and history grew the same way. Now Hibernate loads a whole page's accounts, users and roles in one query each, and the user list loads accounts in the same query as the users. A test proves that 2 rows and 12 rows take the same number of statements. | `default_batch_fetch_size` in [`application.properties`](../backend/athena/src/main/resources/application.properties), [`UserRepository.java`](../backend/athena/src/main/java/com/athena/repository/UserRepository.java); `ListQueryCountIntegrationTest` |
+| 18 | Static assets compressed and cached | Done | **On Vercel:** compressed automatically, and `/assets` cached for a year ([`vercel.json`](../frontend/vercel.json)). **From the API server (Docker, Render):** HTML, CSS, JavaScript and SVG are gzipped, so the 378 KB bundle travels as 117 KB. Files with a hash in the name are cached for a year, pages are checked again on every visit, and API answers are never cached. | [`SpaWebConfig.java`](../backend/athena/src/main/java/com/athena/config/SpaWebConfig.java), [`application.properties`](../backend/athena/src/main/resources/application.properties); `SinglePageAppRoutingIntegrationTest` |
+| 19 | Rate limiting on public endpoints | Done | Every client network has a limit on API requests (600 a minute) and registrations (50 an hour). Sign-in is throttled per account and network, per network and per account, and request bodies are capped at 16 KB. | `RateLimitFilter`, `LoginAttemptService`, `RequestSizeLimitFilter`; `RateLimitIntegrationTest`; security check A4 |
+
+## Not covered yet
+
+* **Graceful shutdown in action.** It is configured and its settings are tested, but a real stop signal was not sent here: Windows cannot send one to Java the way Linux and Render do.
+* **Trivy runs only in CI.** It first runs on the next push. If it finds a fixable high problem, update the base image or the library it names.
+* **Alerts and backups.** Render shows logs and health, but no alerting is set up, and the free database has no backups (paid plans do).
+* **Versioned migrations.** The idempotent scripts are enough at this size. Flyway or Liquibase would add a version history once the schema starts changing often.

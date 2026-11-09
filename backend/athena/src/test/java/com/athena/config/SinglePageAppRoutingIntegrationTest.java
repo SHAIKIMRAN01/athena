@@ -39,6 +39,25 @@ class SinglePageAppRoutingIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void hashedFilesAreCachedForAYearAndPagesAreCheckedEveryTime() throws Exception {
+        mockMvc.perform(get("/assets/app-test.js"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "max-age=31536000, public, immutable"));
+
+        mockMvc.perform(get("/dashboard"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-cache"));
+    }
+
+    @Test
+    void apiAnswersAreNeverCached() throws Exception {
+        register("Alice");
+        getAs(login("Alice"), "/api/accounts/me")
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", containsString("no-store")));
+    }
+
+    @Test
     void pathTraversalDoesNotEscapeTheStaticFolder() throws Exception {
         mockMvc.perform(get("/%2e%2e/application.properties")).andExpect(status().is4xxClientError());
         mockMvc.perform(get("/../application.properties")).andExpect(status().is4xxClientError());

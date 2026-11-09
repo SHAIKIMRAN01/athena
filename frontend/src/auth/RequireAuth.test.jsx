@@ -16,7 +16,14 @@ function renderAt(path, authState) {
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/login" element={<p>Sign-in page</p>} />
-        <Route path="/admin/users" element={<RequireAuth roles={['ADMIN']}><p>Admin area</p></RequireAuth>} />
+        <Route
+          path="/admin/users"
+          element={
+            <RequireAuth roles={['ADMIN']}>
+              <p>Admin area</p>
+            </RequireAuth>
+          }
+        />
       </Routes>
     </MemoryRouter>,
   )

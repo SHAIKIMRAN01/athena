@@ -2,8 +2,7 @@ import { expect, it } from 'vitest'
 import { clearSession, loadSession, saveSession, tokenExpiry } from './session'
 
 function tokenExpiringAt(seconds) {
-  const encode = (object) =>
-    btoa(JSON.stringify(object)).replaceAll('=', '').replaceAll('+', '-').replaceAll('/', '_')
+  const encode = (object) => btoa(JSON.stringify(object)).replaceAll('=', '').replaceAll('+', '-').replaceAll('/', '_')
   return `${encode({ alg: 'HS256' })}.${encode({ sub: 'alice@example.com', exp: seconds })}.signature`
 }
 

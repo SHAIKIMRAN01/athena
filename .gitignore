@@ -10,6 +10,21 @@ target/
 .env.*
 !.env.example
 
+# Keys, certificates and credential files: never in git, whatever their folder
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+keystore/
+id_rsa*
+id_ed25519*
+credentials.json
+service-account*.json
+secrets.yml
+secrets.yaml
+
 # Logs
 *.log
 

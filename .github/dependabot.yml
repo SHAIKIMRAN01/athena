@@ -13,3 +13,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # The base images in the Dockerfile (Node for the build, the Java runtime).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

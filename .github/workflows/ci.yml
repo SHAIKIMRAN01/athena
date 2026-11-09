@@ -72,6 +72,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - name: Formatting (Prettier)
+        run: npm run format:check
       - run: npm test
       - run: npm run build
       - name: Build as Vercel does, with the API on another origin
@@ -173,8 +175,14 @@ jobs:
             app.log
 
   docker:
-    name: Docker image builds
+    name: Docker image builds and has no known vulnerabilities
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t athena:ci .
+      # Trivy checks the operating system packages, the Java runtime and every
+      # library inside the jar. High or critical problems that have a fix
+      # fail the build; ones without a fix yet are reported by Dependabot.
+      - name: Vulnerability scan (Trivy)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --no-progress athena:ci

@@ -71,11 +71,25 @@ export function LoginPage() {
       <form className="form" onSubmit={submit} noValidate>
         <label className="field">
           <span>Email</span>
-          <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required maxLength={150} />
+          <input
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            maxLength={150}
+          />
         </label>
         <label className="field">
           <span>Password</span>
-          <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={200} />
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            maxLength={200}
+          />
         </label>
         <button type="submit" className="button button-primary button-block" disabled={busy || !email || !password}>
           {busy ? 'Signing in…' : 'Sign in'}

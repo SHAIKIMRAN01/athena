@@ -98,9 +98,19 @@ export default function DashboardPage() {
           </section>
 
           <section className="quick-actions" aria-label="Move money">
-            <QuickAction to="/move-money?type=deposit" icon={<DepositIcon />} title="Deposit" text="Add cash to your account" />
+            <QuickAction
+              to="/move-money?type=deposit"
+              icon={<DepositIcon />}
+              title="Deposit"
+              text="Add cash to your account"
+            />
             <QuickAction to="/move-money?type=withdraw" icon={<WithdrawIcon />} title="Withdraw" text="Take cash out" />
-            <QuickAction to="/move-money?type=transfer" icon={<TransferIcon />} title="Transfer" text="Send to another Athena account" />
+            <QuickAction
+              to="/move-money?type=transfer"
+              icon={<TransferIcon />}
+              title="Transfer"
+              text="Send to another Athena account"
+            />
           </section>
 
           <section className="panel">
@@ -123,7 +133,15 @@ export default function DashboardPage() {
                       </span>
                     </div>
                     <div className="activity-amount">
-                      <span className={item.status === 'FAILED' ? 'amount-failed' : item.direction === 'IN' ? 'amount-in' : 'amount-out'}>
+                      <span
+                        className={
+                          item.status === 'FAILED'
+                            ? 'amount-failed'
+                            : item.direction === 'IN'
+                              ? 'amount-in'
+                              : 'amount-out'
+                        }
+                      >
                         {item.direction === 'IN' ? '+' : '−'}
                         {formatMoney(item.amount)}
                       </span>

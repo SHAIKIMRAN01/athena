@@ -1,0 +1,5 @@
+# Build output, test output and the lockfile are not hand-written.
+dist
+playwright-report
+test-results
+package-lock.json

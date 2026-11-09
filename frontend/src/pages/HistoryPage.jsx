@@ -20,10 +20,7 @@ export default function HistoryPage() {
 
   const selectedId = params.get('tx')
 
-  const list = useAsync(
-    () => athena.history({ ...filters, page, size: 10 }),
-    [filters, page],
-  )
+  const list = useAsync(() => athena.history({ ...filters, page, size: 10 }), [filters, page])
 
   function apply(event) {
     event.preventDefault()
@@ -41,12 +38,20 @@ export default function HistoryPage() {
 
   return (
     <>
-      <PageHeader title="Transaction history" subtitle="Everything that moved money in or out of your account, and attempts that were refused." />
+      <PageHeader
+        title="Transaction history"
+        subtitle="Everything that moved money in or out of your account, and attempts that were refused."
+      />
 
       <form className="filters" onSubmit={apply} aria-label="Filters">
         <label className="field">
           <span>Search</span>
-          <input value={draft.search} onChange={set('search')} placeholder="TXN0000000042 or AT… account" maxLength={100} />
+          <input
+            value={draft.search}
+            onChange={set('search')}
+            placeholder="TXN0000000042 or AT… account"
+            maxLength={100}
+          />
         </label>
         <label className="field">
           <span>Type</span>
@@ -83,8 +88,12 @@ export default function HistoryPage() {
           </select>
         </label>
         <div className="filters-actions">
-          <button type="submit" className="button button-primary">Apply</button>
-          <button type="button" className="button button-ghost" onClick={reset}>Reset</button>
+          <button type="submit" className="button button-primary">
+            Apply
+          </button>
+          <button type="button" className="button button-ghost" onClick={reset}>
+            Reset
+          </button>
         </div>
       </form>
 
@@ -118,14 +127,27 @@ export default function HistoryPage() {
                     onKeyDown={(e) => e.key === 'Enter' && setParams({ tx: item.transactionId })}
                   >
                     <td data-label="Date">{formatDateTime(item.createdAt)}</td>
-                    <td data-label="Reference"><code>{item.reference}</code></td>
+                    <td data-label="Reference">
+                      <code>{item.reference}</code>
+                    </td>
                     <td data-label="Type">{TYPE_LABELS[item.type]}</td>
-                    <td data-label="Counterparty">{item.counterpartyAccountNumber ? <code>{item.counterpartyAccountNumber}</code> : <span className="muted">Cash</span>}</td>
-                    <td data-label="Amount" className={`numeric ${item.status === 'FAILED' ? 'amount-failed' : item.direction === 'IN' ? 'amount-in' : 'amount-out'}`}>
+                    <td data-label="Counterparty">
+                      {item.counterpartyAccountNumber ? (
+                        <code>{item.counterpartyAccountNumber}</code>
+                      ) : (
+                        <span className="muted">Cash</span>
+                      )}
+                    </td>
+                    <td
+                      data-label="Amount"
+                      className={`numeric ${item.status === 'FAILED' ? 'amount-failed' : item.direction === 'IN' ? 'amount-in' : 'amount-out'}`}
+                    >
                       {item.direction === 'IN' ? '+' : '−'}
                       {formatMoney(item.amount)}
                     </td>
-                    <td data-label="Status"><StatusBadge value={item.status} /></td>
+                    <td data-label="Status">
+                      <StatusBadge value={item.status} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -152,15 +174,27 @@ function TransactionDetailDialog({ id, onClose }) {
         <>
           <dl className="details">
             <dt>Reference</dt>
-            <dd><code>{item.reference}</code></dd>
+            <dd>
+              <code>{item.reference}</code>
+            </dd>
             <dt>Type</dt>
-            <dd>{TYPE_LABELS[item.type]} ({item.direction === 'IN' ? 'money in' : 'money out'})</dd>
+            <dd>
+              {TYPE_LABELS[item.type]} ({item.direction === 'IN' ? 'money in' : 'money out'})
+            </dd>
             <dt>Amount</dt>
             <dd>{formatMoney(item.amount)}</dd>
             <dt>Status</dt>
-            <dd><StatusBadge value={item.status} /></dd>
+            <dd>
+              <StatusBadge value={item.status} />
+            </dd>
             <dt>Counterparty</dt>
-            <dd>{item.counterpartyAccountNumber ? <code>{item.counterpartyAccountNumber}</code> : 'Cash (settlement account)'}</dd>
+            <dd>
+              {item.counterpartyAccountNumber ? (
+                <code>{item.counterpartyAccountNumber}</code>
+              ) : (
+                'Cash (settlement account)'
+              )}
+            </dd>
             <dt>Requested</dt>
             <dd>{formatDateTime(item.createdAt)}</dd>
             <dt>Completed</dt>
@@ -168,7 +202,9 @@ function TransactionDetailDialog({ id, onClose }) {
             {item.failureCode && (
               <>
                 <dt>Refused because</dt>
-                <dd>{item.failureReason} <span className="muted">({humanize(item.failureCode)})</span></dd>
+                <dd>
+                  {item.failureReason} <span className="muted">({humanize(item.failureCode)})</span>
+                </dd>
               </>
             )}
           </dl>
@@ -178,7 +214,11 @@ function TransactionDetailDialog({ id, onClose }) {
           ) : (
             <table className="table table-compact">
               <thead>
-                <tr><th>Entry</th><th>Account</th><th className="numeric">Amount</th></tr>
+                <tr>
+                  <th>Entry</th>
+                  <th>Account</th>
+                  <th className="numeric">Amount</th>
+                </tr>
               </thead>
               <tbody>
                 {detail.data.ledgerEntries.map((line) => (
@@ -188,7 +228,9 @@ function TransactionDetailDialog({ id, onClose }) {
                         {humanize(line.entryType)}
                       </span>
                     </td>
-                    <td><code>{line.accountNumber}</code></td>
+                    <td>
+                      <code>{line.accountNumber}</code>
+                    </td>
                     <td className="numeric">{formatMoney(line.amount)}</td>
                   </tr>
                 ))}

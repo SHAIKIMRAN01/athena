@@ -27,11 +27,31 @@ export function OverviewPage() {
       {summary.loading && !summary.data && <Spinner />}
       {summary.data && (
         <section className="cards">
-          <Tile label="Customers" value={summary.data.customers} meta={`${summary.data.frozenAccounts} frozen · ${summary.data.disabledUsers} disabled users`} />
-          <Tile label="Customer money held" value={formatMoney(summary.data.customerBalanceTotal)} meta="Sum of all customer balances" />
-          <Tile label="Completed transactions" value={summary.data.completedTransactions} meta={`${summary.data.failedTransactions} refused attempt${summary.data.failedTransactions === 1 ? '' : 's'}`} />
-          <Tile label="Deposited" value={formatMoney(summary.data.depositedTotal)} meta={`Withdrawn ${formatMoney(summary.data.withdrawnTotal)}`} />
-          <Tile label="Transferred" value={formatMoney(summary.data.transferredTotal)} meta="Between customer accounts" />
+          <Tile
+            label="Customers"
+            value={summary.data.customers}
+            meta={`${summary.data.frozenAccounts} frozen · ${summary.data.disabledUsers} disabled users`}
+          />
+          <Tile
+            label="Customer money held"
+            value={formatMoney(summary.data.customerBalanceTotal)}
+            meta="Sum of all customer balances"
+          />
+          <Tile
+            label="Completed transactions"
+            value={summary.data.completedTransactions}
+            meta={`${summary.data.failedTransactions} refused attempt${summary.data.failedTransactions === 1 ? '' : 's'}`}
+          />
+          <Tile
+            label="Deposited"
+            value={formatMoney(summary.data.depositedTotal)}
+            meta={`Withdrawn ${formatMoney(summary.data.withdrawnTotal)}`}
+          />
+          <Tile
+            label="Transferred"
+            value={formatMoney(summary.data.transferredTotal)}
+            meta="Between customer accounts"
+          />
           <Tile
             label="Security events (24 h)"
             value={summary.data.accessDeniedLast24h + summary.data.failedLoginsLast24h}
@@ -66,20 +86,45 @@ function Tile({ label, value, meta }) {
 
 function IntegrityResult({ report }) {
   const checks = [
-    ['Every transaction has equal debits and credits', report.unbalancedTransactionIds.length === 0, report.unbalancedTransactionIds.join(', ')],
-    ['Every balance equals its ledger entries', report.accountsNotMatchingLedger.length === 0, report.accountsNotMatchingLedger.join(', ')],
-    ['Settlement (cash) account equals customer money', report.settlementBalance === report.customerBalanceTotal,
-      `${formatMoney(report.settlementBalance)} vs ${formatMoney(report.customerBalanceTotal)}`],
-    ['Total debits equal total credits', report.totalDebits === report.totalCredits,
-      `${formatMoney(report.totalDebits)} vs ${formatMoney(report.totalCredits)}`],
-    ['Refused attempts moved no money', report.failedTransactionsWithLedgerEntries === 0, `${report.failedTransactionsWithLedgerEntries} entries`],
-    ['Completed transactions have exactly two entries', report.completedTransactionsWithoutTwoEntries === 0, `${report.completedTransactionsWithoutTwoEntries} transactions`],
+    [
+      'Every transaction has equal debits and credits',
+      report.unbalancedTransactionIds.length === 0,
+      report.unbalancedTransactionIds.join(', '),
+    ],
+    [
+      'Every balance equals its ledger entries',
+      report.accountsNotMatchingLedger.length === 0,
+      report.accountsNotMatchingLedger.join(', '),
+    ],
+    [
+      'Settlement (cash) account equals customer money',
+      report.settlementBalance === report.customerBalanceTotal,
+      `${formatMoney(report.settlementBalance)} vs ${formatMoney(report.customerBalanceTotal)}`,
+    ],
+    [
+      'Total debits equal total credits',
+      report.totalDebits === report.totalCredits,
+      `${formatMoney(report.totalDebits)} vs ${formatMoney(report.totalCredits)}`,
+    ],
+    [
+      'Refused attempts moved no money',
+      report.failedTransactionsWithLedgerEntries === 0,
+      `${report.failedTransactionsWithLedgerEntries} entries`,
+    ],
+    [
+      'Completed transactions have exactly two entries',
+      report.completedTransactionsWithoutTwoEntries === 0,
+      `${report.completedTransactionsWithoutTwoEntries} transactions`,
+    ],
     ['No negative balances', report.negativeBalances === 0, `${report.negativeBalances} accounts`],
   ]
 
   return (
     <>
-      <Alert kind={report.consistent ? 'success' : 'error'} title={report.consistent ? 'The books balance' : 'Inconsistency found'}>
+      <Alert
+        kind={report.consistent ? 'success' : 'error'}
+        title={report.consistent ? 'The books balance' : 'Inconsistency found'}
+      >
         Checked {report.transactionsChecked} transactions and {report.ledgerEntriesChecked} ledger entries at{' '}
         {formatDateTime(report.checkedAt)}.
       </Alert>
@@ -108,7 +153,10 @@ export function MonitoringPage() {
 
   return (
     <>
-      <PageHeader title="Transaction monitoring" subtitle="Every customer's transactions, including refused attempts. Read-only." />
+      <PageHeader
+        title="Transaction monitoring"
+        subtitle="Every customer's transactions, including refused attempts. Read-only."
+      />
       <form
         className="filters"
         onSubmit={(event) => {
@@ -117,8 +165,14 @@ export function MonitoringPage() {
           setFilters({ ...draft, account: draft.account.trim(), search: draft.search.trim() })
         }}
       >
-        <label className="field"><span>Reference</span><input value={draft.search} onChange={set('search')} placeholder="TXN0000000042" maxLength={100} /></label>
-        <label className="field"><span>Account</span><input value={draft.account} onChange={set('account')} placeholder="AT…" maxLength={30} /></label>
+        <label className="field">
+          <span>Reference</span>
+          <input value={draft.search} onChange={set('search')} placeholder="TXN0000000042" maxLength={100} />
+        </label>
+        <label className="field">
+          <span>Account</span>
+          <input value={draft.account} onChange={set('account')} placeholder="AT…" maxLength={30} />
+        </label>
         <label className="field">
           <span>Type</span>
           <select value={draft.type} onChange={set('type')}>
@@ -136,8 +190,14 @@ export function MonitoringPage() {
             <option value="FAILED">Failed</option>
           </select>
         </label>
-        <label className="field"><span>From</span><input type="date" value={draft.from} onChange={set('from')} /></label>
-        <label className="field"><span>To</span><input type="date" value={draft.to} onChange={set('to')} /></label>
+        <label className="field">
+          <span>From</span>
+          <input type="date" value={draft.from} onChange={set('from')} />
+        </label>
+        <label className="field">
+          <span>To</span>
+          <input type="date" value={draft.to} onChange={set('to')} />
+        </label>
         <label className="field">
           <span>Sort</span>
           <select value={draft.sort} onChange={set('sort')}>
@@ -146,8 +206,20 @@ export function MonitoringPage() {
           </select>
         </label>
         <div className="filters-actions">
-          <button type="submit" className="button button-primary">Apply</button>
-          <button type="button" className="button button-ghost" onClick={() => { setDraft(EMPTY_TX_FILTERS); setFilters(EMPTY_TX_FILTERS); setPage(0) }}>Reset</button>
+          <button type="submit" className="button button-primary">
+            Apply
+          </button>
+          <button
+            type="button"
+            className="button button-ghost"
+            onClick={() => {
+              setDraft(EMPTY_TX_FILTERS)
+              setFilters(EMPTY_TX_FILTERS)
+              setPage(0)
+            }}
+          >
+            Reset
+          </button>
         </div>
       </form>
 
@@ -159,18 +231,35 @@ export function MonitoringPage() {
           <div className="table-wrap">
             <table className="table table-cards">
               <thead>
-                <tr><th>Date</th><th>Reference</th><th>Type</th><th>From</th><th>To</th><th>Initiated by</th><th className="numeric">Amount</th><th>Status</th></tr>
+                <tr>
+                  <th>Date</th>
+                  <th>Reference</th>
+                  <th>Type</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Initiated by</th>
+                  <th className="numeric">Amount</th>
+                  <th>Status</th>
+                </tr>
               </thead>
               <tbody>
                 {list.data.content.map((tx) => (
                   <tr key={tx.transactionId}>
                     <td data-label="Date">{formatDateTime(tx.createdAt)}</td>
-                    <td data-label="Reference"><code>{tx.reference}</code></td>
+                    <td data-label="Reference">
+                      <code>{tx.reference}</code>
+                    </td>
                     <td data-label="Type">{TYPE_LABELS[tx.type]}</td>
-                    <td data-label="From">{tx.fromAccountNumber ? <code>{tx.fromAccountNumber}</code> : <span className="muted">Cash</span>}</td>
-                    <td data-label="To">{tx.toAccountNumber ? <code>{tx.toAccountNumber}</code> : <span className="muted">Cash</span>}</td>
+                    <td data-label="From">
+                      {tx.fromAccountNumber ? <code>{tx.fromAccountNumber}</code> : <span className="muted">Cash</span>}
+                    </td>
+                    <td data-label="To">
+                      {tx.toAccountNumber ? <code>{tx.toAccountNumber}</code> : <span className="muted">Cash</span>}
+                    </td>
                     <td data-label="Initiated by">{tx.initiatedBy}</td>
-                    <td data-label="Amount" className="numeric">{formatMoney(tx.amount)}</td>
+                    <td data-label="Amount" className="numeric">
+                      {formatMoney(tx.amount)}
+                    </td>
                     <td data-label="Status">
                       <StatusBadge value={tx.status} />
                       {tx.failureCode && <span className="muted small"> {humanize(tx.failureCode)}</span>}
@@ -190,8 +279,18 @@ export function MonitoringPage() {
 // ------------------------------------------------------------- audit log
 
 const ACTIONS = [
-  'DEPOSIT', 'WITHDRAWAL', 'TRANSFER', 'LOGIN', 'LOGIN_LOCKED', 'LOGOUT', 'REGISTER',
-  'ACCESS_DENIED', 'USER_DISABLED', 'USER_ENABLED', 'ACCOUNT_FROZEN', 'ACCOUNT_UNFROZEN',
+  'DEPOSIT',
+  'WITHDRAWAL',
+  'TRANSFER',
+  'LOGIN',
+  'LOGIN_LOCKED',
+  'LOGOUT',
+  'REGISTER',
+  'ACCESS_DENIED',
+  'USER_DISABLED',
+  'USER_ENABLED',
+  'ACCOUNT_FROZEN',
+  'ACCOUNT_UNFROZEN',
 ]
 const OUTCOMES = ['COMPLETED', 'FAILED', 'REJECTED', 'REPLAYED', 'DENIED', 'ERROR']
 const EMPTY_AUDIT_FILTERS = { action: '', outcome: '', actor: '', from: '', to: '' }
@@ -205,7 +304,10 @@ export function AuditLogPage() {
 
   return (
     <>
-      <PageHeader title="Audit log" subtitle="Who did what, to which account, when, and how it ended. Records are never changed or deleted." />
+      <PageHeader
+        title="Audit log"
+        subtitle="Who did what, to which account, when, and how it ended. Records are never changed or deleted."
+      />
       <form
         className="filters"
         onSubmit={(event) => {
@@ -218,22 +320,51 @@ export function AuditLogPage() {
           <span>Action</span>
           <select value={draft.action} onChange={set('action')}>
             <option value="">All actions</option>
-            {ACTIONS.map((action) => <option key={action} value={action}>{humanize(action)}</option>)}
+            {ACTIONS.map((action) => (
+              <option key={action} value={action}>
+                {humanize(action)}
+              </option>
+            ))}
           </select>
         </label>
         <label className="field">
           <span>Outcome</span>
           <select value={draft.outcome} onChange={set('outcome')}>
             <option value="">All outcomes</option>
-            {OUTCOMES.map((outcome) => <option key={outcome} value={outcome}>{humanize(outcome)}</option>)}
+            {OUTCOMES.map((outcome) => (
+              <option key={outcome} value={outcome}>
+                {humanize(outcome)}
+              </option>
+            ))}
           </select>
         </label>
-        <label className="field"><span>Actor email</span><input type="email" value={draft.actor} onChange={set('actor')} maxLength={150} /></label>
-        <label className="field"><span>From</span><input type="date" value={draft.from} onChange={set('from')} /></label>
-        <label className="field"><span>To</span><input type="date" value={draft.to} onChange={set('to')} /></label>
+        <label className="field">
+          <span>Actor email</span>
+          <input type="email" value={draft.actor} onChange={set('actor')} maxLength={150} />
+        </label>
+        <label className="field">
+          <span>From</span>
+          <input type="date" value={draft.from} onChange={set('from')} />
+        </label>
+        <label className="field">
+          <span>To</span>
+          <input type="date" value={draft.to} onChange={set('to')} />
+        </label>
         <div className="filters-actions">
-          <button type="submit" className="button button-primary">Apply</button>
-          <button type="button" className="button button-ghost" onClick={() => { setDraft(EMPTY_AUDIT_FILTERS); setFilters(EMPTY_AUDIT_FILTERS); setPage(0) }}>Reset</button>
+          <button type="submit" className="button button-primary">
+            Apply
+          </button>
+          <button
+            type="button"
+            className="button button-ghost"
+            onClick={() => {
+              setDraft(EMPTY_AUDIT_FILTERS)
+              setFilters(EMPTY_AUDIT_FILTERS)
+              setPage(0)
+            }}
+          >
+            Reset
+          </button>
         </div>
       </form>
 
@@ -245,7 +376,13 @@ export function AuditLogPage() {
           <div className="table-wrap">
             <table className="table table-cards">
               <thead>
-                <tr><th>When</th><th>Actor</th><th>Action</th><th>Outcome</th><th>Details</th></tr>
+                <tr>
+                  <th>When</th>
+                  <th>Actor</th>
+                  <th>Action</th>
+                  <th>Outcome</th>
+                  <th>Details</th>
+                </tr>
               </thead>
               <tbody>
                 {list.data.content.map((record) => (
@@ -253,8 +390,12 @@ export function AuditLogPage() {
                     <td data-label="When">{formatDateTime(record.createdAt)}</td>
                     <td data-label="Actor">{record.actorEmail ?? <span className="muted">anonymous</span>}</td>
                     <td data-label="Action">{humanize(record.action)}</td>
-                    <td data-label="Outcome"><StatusBadge value={record.outcome} /></td>
-                    <td data-label="Details" className="cell-block"><AuditDetails details={record.details} /></td>
+                    <td data-label="Outcome">
+                      <StatusBadge value={record.outcome} />
+                    </td>
+                    <td data-label="Details" className="cell-block">
+                      <AuditDetails details={record.details} />
+                    </td>
                   </tr>
                 ))}
               </tbody>

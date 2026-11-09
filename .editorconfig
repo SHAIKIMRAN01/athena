@@ -1,0 +1,20 @@
+# Shared editor settings, so every editor writes files the same way.
+# The website is also checked by Prettier (frontend/.prettierrc.json) in CI.
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.java]
+indent_size = 4
+
+# The Maven files keep the tabs Spring Initializr created them with.
+[{pom.xml,mvnw,mvnw.cmd}]
+indent_style = tab
+
+[*.md]
+trim_trailing_whitespace = false

@@ -37,8 +37,12 @@ export default function StatementPage() {
         actions={
           data && (
             <>
-              <button type="button" className="button button-ghost" onClick={download}>Download CSV</button>
-              <button type="button" className="button button-ghost" onClick={() => window.print()}>Print</button>
+              <button type="button" className="button button-ghost" onClick={download}>
+                Download CSV
+              </button>
+              <button type="button" className="button button-ghost" onClick={() => window.print()}>
+                Print
+              </button>
             </>
           )
         }
@@ -47,14 +51,28 @@ export default function StatementPage() {
       <form className="filters filters-compact no-print" onSubmit={apply}>
         <label className="field">
           <span>From</span>
-          <input type="date" value={draft.from} max={draft.to} onChange={(e) => setDraft({ ...draft, from: e.target.value })} required />
+          <input
+            type="date"
+            value={draft.from}
+            max={draft.to}
+            onChange={(e) => setDraft({ ...draft, from: e.target.value })}
+            required
+          />
         </label>
         <label className="field">
           <span>To</span>
-          <input type="date" value={draft.to} min={draft.from} onChange={(e) => setDraft({ ...draft, to: e.target.value })} required />
+          <input
+            type="date"
+            value={draft.to}
+            min={draft.from}
+            onChange={(e) => setDraft({ ...draft, to: e.target.value })}
+            required
+          />
         </label>
         <div className="filters-actions">
-          <button type="submit" className="button button-primary">Show</button>
+          <button type="submit" className="button button-primary">
+            Show
+          </button>
         </div>
       </form>
 
@@ -66,19 +84,39 @@ export default function StatementPage() {
           <header className="statement-header">
             <div>
               <span className="card-label">Account</span>
-              <strong><code>{data.accountNumber}</code></strong>
+              <strong>
+                <code>{data.accountNumber}</code>
+              </strong>
             </div>
             <div>
               <span className="card-label">Period</span>
-              <strong>{formatDate(data.from)} – {formatDate(data.to)}</strong>
+              <strong>
+                {formatDate(data.from)} – {formatDate(data.to)}
+              </strong>
             </div>
           </header>
 
           <div className="statement-totals">
-            <div><span className="card-label">Opening balance</span><strong data-testid="opening">{formatMoney(data.openingBalance)}</strong></div>
-            <div><span className="card-label">Money in</span><strong className="amount-in" data-testid="credits">{formatMoney(data.totalCredits, { sign: true })}</strong></div>
-            <div><span className="card-label">Money out</span><strong className="amount-out" data-testid="debits">−{formatMoney(data.totalDebits)}</strong></div>
-            <div><span className="card-label">Closing balance</span><strong data-testid="closing">{formatMoney(data.closingBalance)}</strong></div>
+            <div>
+              <span className="card-label">Opening balance</span>
+              <strong data-testid="opening">{formatMoney(data.openingBalance)}</strong>
+            </div>
+            <div>
+              <span className="card-label">Money in</span>
+              <strong className="amount-in" data-testid="credits">
+                {formatMoney(data.totalCredits, { sign: true })}
+              </strong>
+            </div>
+            <div>
+              <span className="card-label">Money out</span>
+              <strong className="amount-out" data-testid="debits">
+                −{formatMoney(data.totalDebits)}
+              </strong>
+            </div>
+            <div>
+              <span className="card-label">Closing balance</span>
+              <strong data-testid="closing">{formatMoney(data.closingBalance)}</strong>
+            </div>
           </div>
 
           {data.lines.length === 0 ? (
@@ -100,11 +138,19 @@ export default function StatementPage() {
                   {data.lines.map((line) => (
                     <tr key={`${line.reference}-${line.balanceAfter}`}>
                       <td data-label="Date">{formatDateTime(line.date)}</td>
-                      <td data-label="Reference"><code>{line.reference}</code></td>
+                      <td data-label="Reference">
+                        <code>{line.reference}</code>
+                      </td>
                       <td data-label="Description">{line.description}</td>
-                      <td data-label="Money in" className="numeric amount-in">{line.credit ? formatMoney(line.credit) : ''}</td>
-                      <td data-label="Money out" className="numeric amount-out">{line.debit ? formatMoney(line.debit) : ''}</td>
-                      <td data-label="Balance" className="numeric">{formatMoney(line.balanceAfter)}</td>
+                      <td data-label="Money in" className="numeric amount-in">
+                        {line.credit ? formatMoney(line.credit) : ''}
+                      </td>
+                      <td data-label="Money out" className="numeric amount-out">
+                        {line.debit ? formatMoney(line.debit) : ''}
+                      </td>
+                      <td data-label="Balance" className="numeric">
+                        {formatMoney(line.balanceAfter)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

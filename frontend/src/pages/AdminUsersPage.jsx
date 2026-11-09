@@ -35,7 +35,12 @@ export default function AdminUsersPage() {
     try {
       const { kind, target } = pendingAction
       if (kind === 'user') await athena.setUserEnabled(target.id, !target.enabled)
-      else await athena.setAccountStatus(target.accountNumber, target.accountStatus === 'FROZEN' ? 'ACTIVE' : 'FROZEN', reason.trim())
+      else
+        await athena.setAccountStatus(
+          target.accountNumber,
+          target.accountStatus === 'FROZEN' ? 'ACTIVE' : 'FROZEN',
+          reason.trim(),
+        )
       setMessage(describe(pendingAction))
       setPendingAction(null)
       users.reload()
@@ -48,19 +53,40 @@ export default function AdminUsersPage() {
 
   return (
     <>
-      <PageHeader title="Users" subtitle="Enable or disable users and freeze or unfreeze accounts. Every change is audited." />
+      <PageHeader
+        title="Users"
+        subtitle="Enable or disable users and freeze or unfreeze accounts. Every change is audited."
+      />
 
-      <form className="filters filters-compact" onSubmit={(event) => { event.preventDefault(); setPage(0); setSearch(draft.trim()) }}>
+      <form
+        className="filters filters-compact"
+        onSubmit={(event) => {
+          event.preventDefault()
+          setPage(0)
+          setSearch(draft.trim())
+        }}
+      >
         <label className="field field-grow">
           <span>Search</span>
-          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Name, email or account number" maxLength={100} />
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Name, email or account number"
+            maxLength={100}
+          />
         </label>
         <div className="filters-actions">
-          <button type="submit" className="button button-primary">Search</button>
+          <button type="submit" className="button button-primary">
+            Search
+          </button>
         </div>
       </form>
 
-      {message && <Alert kind="success" onDismiss={() => setMessage(null)}>{message}</Alert>}
+      {message && (
+        <Alert kind="success" onDismiss={() => setMessage(null)}>
+          {message}
+        </Alert>
+      )}
       <Alert error={users.error} />
 
       <section className="panel">
@@ -70,14 +96,32 @@ export default function AdminUsersPage() {
           <div className="table-wrap">
             <table className="table table-cards">
               <thead>
-                <tr><th>Name</th><th>Roles</th><th>User</th><th>Account</th><th className="numeric">Balance</th><th>Created</th><th>Actions</th></tr>
+                <tr>
+                  <th>Name</th>
+                  <th>Roles</th>
+                  <th>User</th>
+                  <th>Account</th>
+                  <th className="numeric">Balance</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
               </thead>
               <tbody>
                 {users.data.content.map((user) => (
                   <tr key={user.id}>
-                    <td data-label="Name" className="cell-title"><strong>{user.fullName}</strong><br /><span className="muted small">{user.email}</span></td>
-                    <td data-label="Roles">{user.roles.map((role) => <RoleBadge key={role} role={role} />)}</td>
-                    <td data-label="User"><StatusBadge value={user.enabled ? 'ENABLED' : 'DISABLED'} /></td>
+                    <td data-label="Name" className="cell-title">
+                      <strong>{user.fullName}</strong>
+                      <br />
+                      <span className="muted small">{user.email}</span>
+                    </td>
+                    <td data-label="Roles">
+                      {user.roles.map((role) => (
+                        <RoleBadge key={role} role={role} />
+                      ))}
+                    </td>
+                    <td data-label="User">
+                      <StatusBadge value={user.enabled ? 'ENABLED' : 'DISABLED'} />
+                    </td>
                     <td data-label="Account">
                       {user.accountNumber ? (
                         <>
@@ -87,16 +131,26 @@ export default function AdminUsersPage() {
                         <span className="muted">No account</span>
                       )}
                     </td>
-                    <td data-label="Balance" className="numeric">{user.balance === null ? '—' : formatMoney(user.balance)}</td>
+                    <td data-label="Balance" className="numeric">
+                      {user.balance === null ? '—' : formatMoney(user.balance)}
+                    </td>
                     <td data-label="Created">{formatDateTime(user.createdAt)}</td>
                     <td data-label="Actions" className="actions">
                       {user.id !== me?.id && (
-                        <button type="button" className="button button-small button-ghost" onClick={() => ask({ kind: 'user', target: user })}>
+                        <button
+                          type="button"
+                          className="button button-small button-ghost"
+                          onClick={() => ask({ kind: 'user', target: user })}
+                        >
                           {user.enabled ? 'Disable user' : 'Enable user'}
                         </button>
                       )}
                       {user.accountNumber && user.accountStatus !== 'CLOSED' && (
-                        <button type="button" className="button button-small button-ghost" onClick={() => ask({ kind: 'account', target: user })}>
+                        <button
+                          type="button"
+                          className="button button-small button-ghost"
+                          onClick={() => ask({ kind: 'account', target: user })}
+                        >
                           {user.accountStatus === 'FROZEN' ? 'Unfreeze' : 'Freeze'}
                         </button>
                       )}
@@ -116,7 +170,9 @@ export default function AdminUsersPage() {
         onClose={() => setPendingAction(null)}
         footer={
           <>
-            <button type="button" className="button button-ghost" onClick={() => setPendingAction(null)}>Cancel</button>
+            <button type="button" className="button button-ghost" onClick={() => setPendingAction(null)}>
+              Cancel
+            </button>
             <button type="button" className="button button-danger" onClick={confirm} disabled={busy}>
               {busy ? 'Saving…' : 'Confirm'}
             </button>
@@ -152,7 +208,9 @@ export default function AdminUsersPage() {
 function describe({ kind, target }, asQuestion = false) {
   if (kind === 'user') {
     const verb = target.enabled ? 'Disable' : 'Enable'
-    return asQuestion ? `${verb} ${target.fullName}?` : `${target.fullName} was ${target.enabled ? 'disabled' : 'enabled'}.`
+    return asQuestion
+      ? `${verb} ${target.fullName}?`
+      : `${target.fullName} was ${target.enabled ? 'disabled' : 'enabled'}.`
   }
   const verb = target.accountStatus === 'FROZEN' ? 'Unfreeze' : 'Freeze'
   return asQuestion

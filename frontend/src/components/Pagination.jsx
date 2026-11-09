@@ -6,7 +6,12 @@ export default function Pagination({ page, onPageChange }) {
   const current = page.page
   return (
     <nav className="pagination" aria-label="Pages">
-      <button type="button" className="button button-ghost" disabled={current === 0} onClick={() => onPageChange(current - 1)}>
+      <button
+        type="button"
+        className="button button-ghost"
+        disabled={current === 0}
+        onClick={() => onPageChange(current - 1)}
+      >
         ← Previous
       </button>
       <span>
