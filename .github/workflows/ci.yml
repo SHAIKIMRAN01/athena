@@ -38,7 +38,7 @@ jobs:
       run:
         working-directory: backend/athena
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -64,7 +64,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -105,7 +105,7 @@ jobs:
       # the per-network hourly limit (50 by default) for this one run.
       REGISTRATION_LIMIT_PER_HOUR: "200"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -178,7 +178,7 @@ jobs:
     name: Docker image builds and has no known vulnerabilities
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -t athena:ci .
       # Trivy checks the operating system packages, the Java runtime and every
       # library inside the jar. High or critical problems that have a fix
