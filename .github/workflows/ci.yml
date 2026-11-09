@@ -1,0 +1,180 @@
+# Continuous integration: every push and pull request runs
+#   1. the backend test suite against a real PostgreSQL,
+#   2. the frontend lint, unit tests, build and dependency audit,
+#   3. the whole app end to end: the security check (black-box attacks) and
+#      the Playwright browser tests against the built jar, in Chromium,
+#      Firefox and WebKit (Safari's engine), on desktop, tablet and phone sizes,
+#   4. a Docker image build.
+# Secrets used here are generated per run and masked; none are stored.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests (Java 21, PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: athena_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 20
+    defaults:
+      run:
+        working-directory: backend/athena
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Run all backend tests
+        run: chmod +x mvnw && ./mvnw -B verify
+        env:
+          TEST_DB_URL: jdbc:postgresql://localhost:5432/athena_test
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+      - name: Keep test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: backend/athena/target/surefire-reports
+
+  frontend:
+    name: Frontend lint, tests and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Build as Vercel does, with the API on another origin
+        run: |
+          VITE_API_BASE_URL=https://api.example.com npm run build
+          grep -q "https://api.example.com" dist/index.html
+      - name: No known high or critical vulnerabilities in dependencies
+        run: npm audit --audit-level=high
+
+  end-to-end:
+    name: End-to-end and security check
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: athena
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DB_URL: jdbc:postgresql://localhost:5432/athena
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DEMO_DATA_ENABLED: "true"
+      # Six browser setups each register test customers; leave headroom under
+      # the per-network hourly limit (50 by default) for this one run.
+      REGISTRATION_LIMIT_PER_HOUR: "200"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the app (React inside the Spring Boot jar)
+        run: |
+          cd frontend && npm ci && npm run build
+          mkdir -p ../backend/athena/src/main/resources/static
+          cp -r dist/. ../backend/athena/src/main/resources/static/
+          cd ../backend/athena && chmod +x mvnw && ./mvnw -B -q -DskipTests package
+
+      - name: Generate throwaway secrets for this run
+        run: |
+          jwt=$(openssl rand -base64 48 | tr -d '\n')
+          echo "::add-mask::$jwt"
+          echo "JWT_SECRET=$jwt" >> "$GITHUB_ENV"
+          for role in ADMIN AUDITOR USER; do
+            password="Ci$(openssl rand -hex 12)7"
+            echo "::add-mask::$password"
+            echo "DEMO_${role}_PASSWORD=$password" >> "$GITHUB_ENV"
+          done
+
+      - name: Start Athena
+        run: |
+          nohup java -jar backend/athena/target/athena-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            curl -fs http://localhost:8080/api/health && exit 0
+            sleep 2
+          done
+          cat app.log
+          exit 1
+
+      - name: Security check (black-box attacks against the running app)
+        run: node important/testing/security-check.mjs http://localhost:8080 --report security-check-report.md
+        env:
+          AUDITOR_EMAIL: auditor@athena.demo
+          AUDITOR_PASSWORD: ${{ env.DEMO_AUDITOR_PASSWORD }}
+
+      - name: Browser tests (Chromium, Firefox and WebKit; desktop, tablet and phone)
+        working-directory: frontend
+        run: |
+          npx playwright install --with-deps chromium firefox webkit
+          npx playwright test
+        env:
+          E2E_BASE_URL: http://localhost:8080
+          PLAYWRIGHT_CHANNEL: chromium
+          E2E_ALL_BROWSERS: "1"
+          E2E_ADMIN_PASSWORD: ${{ env.DEMO_ADMIN_PASSWORD }}
+          E2E_AUDITOR_PASSWORD: ${{ env.DEMO_AUDITOR_PASSWORD }}
+          E2E_USER_PASSWORD: ${{ env.DEMO_USER_PASSWORD }}
+
+      - name: Keep reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: end-to-end-reports
+          path: |
+            security-check-report.md
+            frontend/playwright-report
+            app.log
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t athena:ci .

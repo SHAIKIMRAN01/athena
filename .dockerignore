@@ -1,0 +1,12 @@
+.git
+.github
+.postman
+postman
+**/node_modules
+**/dist
+**/target
+frontend/playwright-report
+frontend/test-results
+docs
+.env
+.env.*

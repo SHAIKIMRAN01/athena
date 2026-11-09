@@ -1,0 +1,59 @@
+# Render blueprint: one web service built from the Dockerfile plus a managed
+# PostgreSQL database. In Render: New > Blueprint > pick this repository.
+# Values marked "sync: false" are secrets you type into the Render dashboard;
+# they are never stored in git. See important/DEPLOYMENT.md.
+
+databases:
+  - name: athena-db
+    databaseName: athena
+    user: athena
+    plan: free
+    # No connections from the internet: only services on Render's private
+    # network in the same region (the API below) can reach the database.
+    ipAllowList: []
+
+services:
+  - type: web
+    name: athena
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: DB_HOST
+        fromDatabase:
+          name: athena-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: athena-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: athena-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: athena-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: athena-db
+          property: password
+      - key: JWT_SECRET
+        sync: false
+      - key: FORWARD_HEADERS_STRATEGY
+        value: native
+      # The website's address when it is hosted on Vercel, for example
+      # https://athena.vercel.app (exact, no trailing slash). Leave empty
+      # if you only use the website this service serves itself.
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: DEMO_DATA_ENABLED
+        value: "true"
+      - key: DEMO_ADMIN_PASSWORD
+        sync: false
+      - key: DEMO_AUDITOR_PASSWORD
+        sync: false
+      - key: DEMO_USER_PASSWORD
+        sync: false

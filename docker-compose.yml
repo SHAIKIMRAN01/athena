@@ -1,0 +1,44 @@
+# Athena with its own PostgreSQL, for a local full-stack run.
+#
+#   copy .env.example .env      (then fill in the values)
+#   docker compose up --build
+#   open http://localhost:8080
+#
+# Secrets come from .env, which git ignores. Nothing secret is in this file.
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: athena
+      POSTGRES_USER: athena
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - athena-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U athena -d athena"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/athena
+      DB_USERNAME: athena
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # Clients connect directly here (no proxy), so do not trust X-Forwarded-For.
+      FORWARD_HEADERS_STRATEGY: none
+      DEMO_DATA_ENABLED: ${DEMO_DATA_ENABLED:-false}
+      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-}
+      DEMO_AUDITOR_PASSWORD: ${DEMO_AUDITOR_PASSWORD:-}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-}
+    ports:
+      - "8080:8080"
+
+volumes:
+  athena-data:
