@@ -14,7 +14,13 @@ updates:
     schedule:
       interval: weekly
   # The base images in the Dockerfile (Node for the build, the Java runtime).
+  # They stay on the LTS lines the code is built and tested with (Java 21,
+  # Node 22): moving to a new major version means changing the Dockerfile,
+  # CI and the local tools together, so it is a project decision, not a bot's.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

@@ -25,6 +25,12 @@ RUN ./mvnw -B -q package -DskipTests
 
 # 3. Run on a JRE-only image as an unprivileged user -----------------------
 FROM eclipse-temurin:21-jre
+# Install the Ubuntu security fixes published since the base image was built.
+# CI scans the finished image (Trivy) and fails on a high or critical problem
+# that already has a fix, so the image must carry those fixes.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system athena && useradd --system --gid athena --uid 10001 athena
 WORKDIR /app
 COPY --from=backend /backend/target/athena-0.0.1-SNAPSHOT.jar app.jar
