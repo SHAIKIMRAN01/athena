@@ -1,6 +1,7 @@
 package com.athena.entity;
 
 import jakarta.persistence.*;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
@@ -27,6 +28,10 @@ public class User {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    /** When the password last changed; tokens issued earlier are refused. */
+    @Column(name = "password_changed_at")
+    private Instant passwordChangedAt;
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
@@ -84,6 +89,14 @@ public class User {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getPasswordChangedAt() {
+        return passwordChangedAt;
+    }
+
+    public void setPasswordChangedAt(Instant passwordChangedAt) {
+        this.passwordChangedAt = passwordChangedAt;
     }
 
     public Set<Role> getRoles() {

@@ -1,5 +1,7 @@
 package com.athena.security;
 
+import com.athena.entity.User;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -32,6 +34,14 @@ import java.util.UUID;
 public class JwtService {
 
     public static final String ISSUER = "athena";
+
+    /**
+     * When the user's password last changed, in epoch milliseconds (0 if
+     * never), as it was when the token was issued. After a change it no
+     * longer matches the user's, so every older token is refused, however
+     * close in time it was issued.
+     */
+    public static final String PASSWORD_STAMP_CLAIM = "passwordChangedAt";
 
     /** HS256 needs at least 256 bits of key. */
     static final int MIN_KEY_BYTES = 32;
@@ -89,6 +99,7 @@ public class JwtService {
                         .stream()
                         .map(authority -> authority.getAuthority())
                         .toList())
+                .claim(PASSWORD_STAMP_CLAIM, passwordStamp(userDetails.getUser()))
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiresAt))
                 .signWith(signingKey, Jwts.SIG.HS256)
@@ -115,6 +126,12 @@ public class JwtService {
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
+
+    /** The user's current password stamp; see {@link #PASSWORD_STAMP_CLAIM}. */
+    public static long passwordStamp(User user) {
+        Instant changedAt = user.getPasswordChangedAt();
+        return changedAt == null ? 0 : changedAt.toEpochMilli();
     }
 
     public long getExpirationSeconds() {

@@ -1,36 +1,33 @@
 package com.athena.security;
 
-import java.time.Clock;
 import java.time.Duration;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Counts events per key (for example per client IP) in fixed time windows.
  * When a key reaches its limit, it stays limited until its window ends.
  *
- * <p>State is kept in memory, which suits the single-instance deployment
- * Athena targets. Several instances would need a shared store such as
- * Redis; THREATS.md lists this as a known limit.
+ * <p>The counters live in a {@link CounterStore}: Redis in production, so
+ * every server instance enforces the same limit, or this server's memory on
+ * a developer's PC.
  */
 public final class FixedWindowRateLimiter {
 
-    /** Above this many tracked keys, expired windows are dropped. */
-    private static final int CLEANUP_THRESHOLD = 10_000;
-
-    private record Window(long startMillis, int count) {}
-
+    private final String name;
     private final int limit;
-    private final long windowMillis;
-    private final Clock clock;
-    private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
+    private final Duration window;
+    private final CounterStore store;
 
-    public FixedWindowRateLimiter(int limit, Duration window, Clock clock) {
+    /**
+     * @param name keeps this limiter's counters apart from others in the same store
+     */
+    public FixedWindowRateLimiter(String name, int limit, Duration window, CounterStore store) {
         if (limit < 1) {
             throw new IllegalArgumentException("limit must be at least 1");
         }
+        this.name = name;
         this.limit = limit;
-        this.windowMillis = window.toMillis();
-        this.clock = clock;
+        this.window = window;
+        this.store = store;
     }
 
     /**
@@ -39,8 +36,8 @@ public final class FixedWindowRateLimiter {
      * @return 0 if the event is allowed, otherwise the seconds until the key's window ends
      */
     public long tryAcquire(String key) {
-        Window window = count(key);
-        return window.count() <= limit ? 0 : secondsLeft(window);
+        CounterStore.Count count = store.increment(storeKey(key), window);
+        return count.value() <= limit ? 0 : seconds(count.millisLeft());
     }
 
     /**
@@ -49,49 +46,26 @@ public final class FixedWindowRateLimiter {
      * @return true if this event made the key reach its limit
      */
     public boolean record(String key) {
-        return count(key).count() == limit;
+        return store.increment(storeKey(key), window).value() == limit;
     }
 
     /**
      * @return 0 if the key is below its limit, otherwise the seconds until it is free again
      */
     public long secondsUntilAllowed(String key) {
-        Window window = windows.get(key);
-        if (window == null
-                || clock.millis() - window.startMillis() >= windowMillis
-                || window.count() < limit) {
-            return 0;
-        }
-        return secondsLeft(window);
+        CounterStore.Count count = store.peek(storeKey(key));
+        return count.value() < limit ? 0 : seconds(count.millisLeft());
     }
 
     public void reset(String key) {
-        windows.remove(key);
+        store.delete(storeKey(key));
     }
 
-    public void clear() {
-        windows.clear();
+    private String storeKey(String key) {
+        return name + ":" + key;
     }
 
-    private Window count(String key) {
-        Window window = windows.compute(key, (k, current) -> {
-            long now = clock.millis();
-            if (current == null || now - current.startMillis() >= windowMillis) {
-                return new Window(now, 1);
-            }
-            return new Window(current.startMillis(), current.count() + 1);
-        });
-
-        if (windows.size() > CLEANUP_THRESHOLD) {
-            long now = clock.millis();
-            windows.values().removeIf(old -> now - old.startMillis() >= windowMillis);
-        }
-
-        return window;
-    }
-
-    private long secondsLeft(Window window) {
-        long millisLeft = window.startMillis() + windowMillis - clock.millis();
+    private static long seconds(long millisLeft) {
         return Math.max(1, (millisLeft + 999) / 1000);
     }
 }

@@ -5,7 +5,6 @@ import com.athena.exception.TooManyRequestsException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.time.Clock;
 import java.time.Duration;
 
 /**
@@ -25,18 +24,20 @@ public class LoginAttemptService {
     private final FixedWindowRateLimiter perAccountAndIp;
     private final FixedWindowRateLimiter perIp;
     private final FixedWindowRateLimiter perAccount;
+    private final CounterStore store;
 
     public LoginAttemptService(
             @Value("${app.security.login.max-failures-per-account-and-ip:5}") int perAccountAndIpLimit,
             @Value("${app.security.login.max-failures-per-ip:30}") int perIpLimit,
             @Value("${app.security.login.max-failures-per-account:50}") int perAccountLimit,
             @Value("${app.security.login.lockout-minutes:15}") int lockoutMinutes,
-            Clock clock) {
+            CounterStore store) {
 
         Duration window = Duration.ofMinutes(lockoutMinutes);
-        this.perAccountAndIp = new FixedWindowRateLimiter(perAccountAndIpLimit, window, clock);
-        this.perIp = new FixedWindowRateLimiter(perIpLimit, window, clock);
-        this.perAccount = new FixedWindowRateLimiter(perAccountLimit, window, clock);
+        this.perAccountAndIp = new FixedWindowRateLimiter("login-account-ip", perAccountAndIpLimit, window, store);
+        this.perIp = new FixedWindowRateLimiter("login-ip", perIpLimit, window, store);
+        this.perAccount = new FixedWindowRateLimiter("login-account", perAccountLimit, window, store);
+        this.store = store;
     }
 
     /**
@@ -69,9 +70,7 @@ public class LoginAttemptService {
 
     /** Forgets all counters. Used by tests so each one starts clean. */
     public void reset() {
-        perAccountAndIp.clear();
-        perIp.clear();
-        perAccount.clear();
+        store.clear();
     }
 
     private static String pair(String email, String clientIp) {

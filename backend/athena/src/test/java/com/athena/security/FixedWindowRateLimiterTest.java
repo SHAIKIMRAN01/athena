@@ -2,11 +2,7 @@ package com.athena.security;
 
 import org.junit.jupiter.api.Test;
 
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,32 +12,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class FixedWindowRateLimiterTest {
 
-    /** A clock that only moves when told to. */
-    private static final class ManualClock extends Clock {
-        private Instant now = Instant.parse("2026-11-08T10:00:00Z");
-
-        void advance(Duration duration) {
-            now = now.plus(duration);
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return this;
-        }
-
-        @Override
-        public Instant instant() {
-            return now;
-        }
-    }
-
     private final ManualClock clock = new ManualClock();
-    private final FixedWindowRateLimiter limiter = new FixedWindowRateLimiter(3, Duration.ofMinutes(15), clock);
+    private final FixedWindowRateLimiter limiter =
+            new FixedWindowRateLimiter("test", 3, Duration.ofMinutes(15), new InMemoryCounterStore(clock));
 
     @Test
     void eventsUpToTheLimitAreAllowed() {

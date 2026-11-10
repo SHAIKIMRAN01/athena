@@ -1,43 +1,68 @@
 # Latest full test run
 
-Run on 2026-11-09, after the production-readiness work (query batching, caching,
-compression, timeouts, stricter lint). Re-create it with the commands in [TESTING.md](TESTING.md).
+Run on 2026-11-10, after the BalanceVault additions (append-only history, the app's
+restricted database role, Redis rate limits, the first-admin bootstrap, password change and staff onboarding),
+with the app set up as in production: rate limits in Redis (jedis-mock standing in for Redis on this PC) and the
+app connected as `athena_app`. Re-create it with the commands in [TESTING.md](TESTING.md).
 
 | Suite | Result |
 | --- | --- |
-| Backend (JUnit, real PostgreSQL) | 165 / 165 passed |
-| Frontend unit (Vitest) | 60 / 60 passed |
-| Browser tests (Playwright, six setups) | 38 / 38 passed: desktop, tablet and phone in Chromium (Edge), Firefox, Safari and iPhone in WebKit |
-| API collection (Postman) | 75 / 75 checks passed |
+| Backend (JUnit, real PostgreSQL, in-test Redis) | 235 / 235 passed |
+| Frontend unit (Vitest) | 74 / 74 passed |
+| Browser tests (Playwright, six setups) | 50 / 50 passed: desktop, tablet and phone in Chromium (Edge), Firefox, Safari and iPhone in WebKit |
+| API collection (Postman) | 88 / 88 checks passed |
 | Security check (black-box attacks) | 21 / 21 passed ([report](SECURITY_CHECK_REPORT.md)) |
-| Website on its own origin, as on Vercel (run 2026-11-09) | 36 / 36 browser tests in the six setups and 23 / 23 security checks passed |
+| Website on its own origin, as on Vercel | 48 / 48 browser tests in the six setups, and 23 / 23 security checks passed |
+
+## Production setup checks (same run)
+
+What the running app reported, and what PostgreSQL answered to forbidden statements:
+
+```
+mock redis listening on 127.0.0.1:6390
+{"status":"UP","database":"UP","redis":"UP"}
+Database roles: the app connects as athena_app (a member of athena_writer); the schema owner is postgres
+Rate limits and sign-in throttling are counted in Redis
+sessions as athena_app: 10
+athena_app DELETE FROM audit_logs: ERROR:  permission denied for table audit_logs
+owner UPDATE ledger_entries: ERROR:  ledger_entries is append-only: UPDATE is not allowed
+{"status":"UP","database":"UP","redis":"UP"}
+```
 
 ## Backend, by test class
 
 | Test class | Tests | Failures | Errors | Seconds |
 | --- | ---: | ---: | ---: | ---: |
-| AthenaApplicationTests | 1 | 0 | 0 | 10.7 |
-| config.DemoDataInitializerIntegrationTest | 1 | 0 | 0 | 4.6 |
-| config.ProductionSettingsIntegrationTest | 3 | 0 | 0 | 0.4 |
-| config.RenameCarryOverIntegrationTest | 2 | 0 | 0 | 0.3 |
-| config.SinglePageAppRoutingIntegrationTest | 5 | 0 | 0 | 3.9 |
-| controller.AuthControllerIntegrationTest | 4 | 0 | 0 | 1.4 |
-| controller.HistoryAndStatementIntegrationTest | 20 | 0 | 0 | 10.1 |
-| controller.IdempotencyControllerIntegrationTest | 4 | 0 | 0 | 1.8 |
-| controller.ListQueryCountIntegrationTest | 1 | 0 | 0 | 5.9 |
-| controller.TransactionControllerIntegrationTest | 23 | 0 | 0 | 9.2 |
-| security.AccessControlIntegrationTest | 6 | 0 | 0 | 4.8 |
-| security.AccountSecurityIntegrationTest | 9 | 0 | 0 | 4.7 |
-| security.AdminAndOversightIntegrationTest | 9 | 0 | 0 | 6.7 |
-| security.CorsIntegrationTest | 4 | 0 | 0 | 2.0 |
+| AthenaApplicationTests | 1 | 0 | 0 | 17.3 |
+| config.AdminBootstrapIntegrationTest | 13 | 0 | 0 | 5.1 |
+| config.DatabaseRolesIntegrationTest | 23 | 0 | 0 | 8.2 |
+| config.DemoDataInitializerIntegrationTest | 1 | 0 | 0 | 2.1 |
+| config.ProductionSettingsIntegrationTest | 3 | 0 | 0 | 0.2 |
+| config.RenameCarryOverIntegrationTest | 2 | 0 | 0 | 0.2 |
+| config.SinglePageAppRoutingIntegrationTest | 5 | 0 | 0 | 0.8 |
+| controller.AuthControllerIntegrationTest | 4 | 0 | 0 | 1.0 |
+| controller.HistoryAndStatementIntegrationTest | 20 | 0 | 0 | 10.4 |
+| controller.IdempotencyControllerIntegrationTest | 4 | 0 | 0 | 2.2 |
+| controller.ListQueryCountIntegrationTest | 1 | 0 | 0 | 7.4 |
+| controller.TransactionControllerIntegrationTest | 23 | 0 | 0 | 11.4 |
+| security.AccessControlIntegrationTest | 6 | 0 | 0 | 5.8 |
+| security.AccountSecurityIntegrationTest | 9 | 0 | 0 | 5.5 |
+| security.AdminAndOversightIntegrationTest | 9 | 0 | 0 | 7.1 |
+| security.CorsIntegrationTest | 4 | 0 | 0 | 2.7 |
+| security.FailoverCounterStoreTest | 4 | 0 | 0 | 0.5 |
 | security.FixedWindowRateLimiterTest | 3 | 0 | 0 | 0.0 |
-| security.HttpHardeningIntegrationTest | 13 | 0 | 0 | 5.7 |
-| security.RateLimitIntegrationTest | 2 | 0 | 0 | 1.8 |
-| security.SessionSecurityIntegrationTest | 13 | 0 | 0 | 4.2 |
-| service.AuditLogIntegrationTest | 5 | 0 | 0 | 1.7 |
-| service.IdempotencyIntegrationTest | 13 | 0 | 0 | 6.0 |
-| service.TransactionServiceIntegrationTest | 24 | 0 | 0 | 20.5 |
-| **Total** | **165** | **0** | **0** | **106.6** |
+| security.HttpHardeningIntegrationTest | 13 | 0 | 0 | 5.8 |
+| security.PasswordChangeIntegrationTest | 7 | 0 | 0 | 5.7 |
+| security.RateLimitIntegrationTest | 2 | 0 | 0 | 2.2 |
+| security.RedisCounterStoreTest | 5 | 0 | 0 | 1.2 |
+| security.RedisRateLimitIntegrationTest | 2 | 0 | 0 | 2.8 |
+| security.SessionSecurityIntegrationTest | 13 | 0 | 0 | 4.5 |
+| security.StaffOnboardingIntegrationTest | 9 | 0 | 0 | 5.2 |
+| service.AppendOnlyRecordsIntegrationTest | 7 | 0 | 0 | 3.9 |
+| service.AuditLogIntegrationTest | 5 | 0 | 0 | 2.1 |
+| service.IdempotencyIntegrationTest | 13 | 0 | 0 | 5.6 |
+| service.TransactionServiceIntegrationTest | 24 | 0 | 0 | 22.4 |
+| **Total** | **235** | **0** | **0** | **149.2** |
 
 ## Frontend unit tests, by file
 
@@ -48,14 +73,17 @@ compression, timeouts, stricter lint). Re-create it with the commands in [TESTIN
 | src/auth/AuthContext.test.jsx | 3 | 0 |
 | src/auth/RequireAuth.test.jsx | 4 | 0 |
 | src/auth/session.test.js | 3 | 0 |
+| src/components/Dialog.test.jsx | 2 | 0 |
 | src/components/ErrorBoundary.test.jsx | 2 | 0 |
 | src/lib/csv.test.js | 2 | 0 |
 | src/lib/idempotency.test.js | 4 | 0 |
 | src/lib/money.test.js | 18 | 0 |
-| src/lib/validation.test.js | 2 | 0 |
+| src/lib/validation.test.js | 6 | 0 |
+| src/pages/AdminUsersPage.test.jsx | 3 | 0 |
 | src/pages/LoginPage.test.jsx | 3 | 0 |
 | src/pages/MoneyPage.test.jsx | 8 | 0 |
-| **Total** | **60** | **0** |
+| src/pages/ProfilePage.test.jsx | 5 | 0 |
+| **Total** | **74** | **0** |
 
 ## Browser tests, by setup
 
@@ -65,10 +93,12 @@ compression, timeouts, stricter lint). Re-create it with the commands in [TESTIN
 | customer.spec.js | a refused request shows why and appears in history as failed | passed | passed | passed | passed | passed | passed |
 | customer.spec.js | a customer cannot open administrator pages | passed | passed | passed | passed | passed | passed |
 | customer.spec.js | an expired session sends the user to sign in with an explanation | passed | passed | passed | passed | passed | passed |
+| customer.spec.js | a customer changes their password: the session ends and only the new password works | passed | passed | passed | passed | passed | passed |
 | screenshots.spec.js | screenshots | passed | – | – | – | – | – |
 | screenshots.spec.js | phone screenshots | passed | – | – | – | – | – |
 | staff.spec.js | an auditor sees the books balance and the audit log, and cannot manage users | passed | passed | passed | passed | passed | passed |
 | staff.spec.js | an administrator freezes an account, the customer is blocked, then it is unfrozen | passed | passed | passed | passed | passed | passed |
+| staff.spec.js | an administrator adds an auditor, who signs in with the initial password and changes it | passed | passed | passed | passed | passed | passed |
 
 – means not run in that setup: the README screenshots are taken once, on desktop.
 

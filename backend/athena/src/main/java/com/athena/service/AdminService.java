@@ -1,12 +1,15 @@
 package com.athena.service;
 
 import com.athena.dto.AdminUserView;
+import com.athena.dto.CreateStaffRequest;
 import com.athena.dto.PageResponse;
 import com.athena.entity.Account;
 import com.athena.entity.AccountType;
 import com.athena.entity.AuditOutcome;
 import com.athena.entity.User;
 import com.athena.exception.AccountNotFoundException;
+import com.athena.exception.EmailAlreadyRegisteredException;
+import com.athena.exception.InvalidRequestException;
 import com.athena.exception.OperationNotAllowedException;
 import com.athena.exception.ResourceNotFoundException;
 import com.athena.repository.AccountRepository;
@@ -44,15 +47,18 @@ public class AdminService {
     private final UserRepository userRepository;
     private final AccountRepository accountRepository;
     private final AuditService auditService;
+    private final StaffUserService staffUsers;
 
     public AdminService(
             UserRepository userRepository,
             AccountRepository accountRepository,
-            AuditService auditService) {
+            AuditService auditService,
+            StaffUserService staffUsers) {
 
         this.userRepository = userRepository;
         this.accountRepository = accountRepository;
         this.auditService = auditService;
+        this.staffUsers = staffUsers;
     }
 
     /**
@@ -147,6 +153,32 @@ public class AdminService {
                 AuditOutcome.COMPLETED, AuditService.ACCOUNT_ENTITY, account.getId(), details);
 
         return view(account.getUser());
+    }
+
+    /**
+     * Adds a staff member: another administrator or an auditor, with no
+     * customer account. The initial password is the administrator's choice;
+     * the new user changes it on the Profile page.
+     */
+    @Transactional
+    public AdminUserView createStaff(Long adminId, CreateStaffRequest request) {
+
+        if (!StaffUserService.isStrongPassword(request.initialPassword())) {
+            throw new InvalidRequestException("PASSWORD_TOO_LONG",
+                    "Initial password must be at most " + AuthService.BCRYPT_MAX_BYTES + " bytes");
+        }
+
+        User user = staffUsers
+                .createIfMissing(request.fullName(), request.email(), request.initialPassword(), "ROLE_" + request.role())
+                .orElseThrow(EmailAlreadyRegisteredException::new);
+
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("email", user.getEmail());
+        details.put("role", request.role());
+        auditService.record(adminId, "STAFF_CREATED",
+                AuditOutcome.COMPLETED, AuditService.USER_ENTITY, user.getId(), details);
+
+        return view(user);
     }
 
     private AdminUserView view(User user) {

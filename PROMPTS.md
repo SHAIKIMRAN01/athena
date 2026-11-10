@@ -46,6 +46,8 @@ the existing code before adding to it.
 | Day 3 review | "so you saying day 3 is also completed successfully" | The author challenged the claim. The AI had to separate "built and tested" from "not committed, and not yet run by you in Postman". |
 | Day 3 checkpoint | "jus give me a command to git add . and git push so i have to do manually and what fies in comand exclude the files should be excluded" | **The author made the commit themselves.** Postman's workspace folders were deliberately left out. |
 | Day 4 | "compltete the day 4 coding part in full fledeged … run all the tests and create a workflow … individually create them …" with the judging criteria pasted | Frontend, security hardening, CI, threat model, and these documents. |
+| BalanceVault | The organisers' FAQ, pasted: LedgerLine renamed BalanceVault, new mandatory items (account management and onboarding, RBAC, PostgreSQL / Prisma, Redis rate limiting, a first-admin bootstrap script, database roles and deployment health checks), "Please extend your existing LedgerLine implementation" | The AI listed what was already met and what was missing, then asked three questions before writing code. |
+| BalanceVault | Three answers: "Keep Athena (Recommended)", "Fallback on my PC (Recommended)", "Full least-privilege (Recommended)" | **Design decisions by the author**: the README states that Athena is the BalanceVault submission; Redis wherever `REDIS_URL` is set, memory with a warning on a PC; the app connects as a restricted role everywhere, and triggers make history append-only. |
 
 ## 3. Where the AI was wrong, and how it was caught
 
@@ -72,6 +74,11 @@ listed.
 | Two Day 4 browser tests were wrong. One used an ambiguous text locator; one navigated before sign-in finished. | Playwright `customer.spec.js`, `screenshots.spec.js` | Precise locators; wait for the page heading. |
 | The first CORS test for the Vercel setup sent its request without an `Origin` header, so it tested nothing. | `CorsIntegrationTest.theWebsiteCanReadAnswersHeadersAndErrors` | The request now carries the website's origin. |
 | When the session check on page load failed for a network reason, the app signed the user out without a word and deleted the saved session. Phones that drop the network, or a reload while the check was running, would do the same. | Playwright `customer.spec.js`, "an expired session sends the user to sign in with an explanation", in Safari's engine (WebKit): 2 failures in about 20 runs, the check request cut off before it was answered | The check is tried again after 1, 2 and 4 seconds when the server cannot be reached; only a refused token, or a server that stays unreachable, signs the user out, always with a message. `AuthContext.test.jsx` covers all three cases; afterwards the WebKit test passed 20 times in a row. |
+| **BalanceVault.** The Day 4 dialog moved the keyboard focus back to itself on every re-render, because it depended on the `onClose` function that each page passes anew. Typing into a field inside a dialog (the freeze reason, the new staff form) kept only the first character. | The new `Dialog.test.jsx`, written for the staff form: typing "Suspicious activity" left "S" in the field | The dialog keeps the latest `onClose` in a ref and moves the focus only when it opens. Playwright had not caught it because `fill()` sets a whole value at once. |
+| **BalanceVault.** The new staff-onboarding browser test timed out in WebKit (Safari and the iPhone screen) in both layouts. Traces showed every action taking 1 to 7 seconds there: pages that earlier tests opened with `browser.newPage()` were never closed, so each WebKit test ran beside more leftover pages. | Playwright `staff.spec.js`, "an administrator adds an auditor…": 60 s timeout in the two WebKit setups, passing in the other four | A `newPage` fixture (`e2e/helpers.js`) closes those pages after each test, and the longest journey gets Playwright's slow-test time limit. It then passed in 29 s (Safari) and 23 s (iPhone). |
+| **BalanceVault.** The staff endpoint first asked for `ROLE_AUDITOR`, while every API answer names roles without the prefix (`AUDITOR`). | `StaffOnboardingIntegrationTest`: expected `ROLE_AUDITOR`, got `AUDITOR` in the answer | Requests use `ADMIN` / `AUDITOR` like the rest of the API. |
+| **BalanceVault.** The new Redis code used `JedisPooled` and `fromURI`, which Jedis 7 deprecates, and a `close()` that could throw `InterruptedException`. | The compiler: the build treats every warning as an error (`-Xlint:all`, `failOnWarning`) | Jedis 7's `RedisClient` builder; `close()` without checked exceptions. |
+| **BalanceVault.** The first-admin script's one-off mode started the app without its web layer, which Spring Security needs, so it failed; and Spring Boot devtools' restarter turned that failure into exit code 0, so the script printed "Done". On Windows PowerShell 5.1 the script had also stopped at a harmless notice Java prints on stderr. | Running the script against a scratch database, three times: a weak password, a valid one, then again with other values | The one-off run starts the whole app on a free port and exits; devtools' restarter is off for it, so the exit code is honest; native stderr no longer stops the script. Afterwards: weak password exit 1 with the reason, valid exit 0 and one administrator, again exit 0 and nothing changed. |
 
 ### 3.3 Caught by the AI reviewing its own work
 
@@ -88,6 +95,10 @@ listed.
 | On tablets and phones, a short page stretched the new top bar to fill the screen: the CSS grid shared the spare height between its rows. | Seen only in Safari-engine screenshots; Chromium's full-page screenshots hid it. | `grid-template-rows: auto 1fr` for the top-bar layout. |
 | Account numbers and references broke in the middle inside tables on tablets. | Hard to read, easy to mistype. | Codes stay on one line in tables, and tables become two-column cards on tablets. |
 | Checked against a go-live checklist, the list pages ran one or two extra database queries per row (N + 1): the user list took 13 statements for 4 users and 33 for 14. | Pages slow down and the database works harder as data grows. | Hibernate batch fetching, and users loaded with their accounts in one query. `ListQueryCountIntegrationTest` proves 2 rows and 12 rows take the same number of statements. |
+| **BalanceVault.** The first version of "a password change ends every session" compared the token's issue time with the change in whole seconds (JWT times have no milliseconds), so a token issued in the same second as the change would have kept working. | A stolen session could survive the change meant to end it, and the test would have been flaky. | Each token carries the exact password stamp it was issued with; any other stamp is refused. The test issues two tokens moments before the change and both are refused. |
+| **BalanceVault.** The first Redis failover tried Redis again on every call. | During an outage every request would wait for a network timeout, several times per sign-in. | Redis is retried every 5 seconds; meanwhile limits count in memory, and a lockout from the outage still holds afterwards (`FailoverCounterStoreTest`). |
+| **BalanceVault.** The new append-only triggers would have broken an existing test that back-dates ledger rows. | A failing suite, or worse, a trigger weakened to let the test through. | A test helper switches the trigger off for one statement inside one transaction, which only the tables' owner can do. |
+| **BalanceVault.** Edits made with Python on Windows turned LF files into CRLF, and the new `bootstrap-admin.sh` would not have run in Git Bash with CRLF. | Git normalises line endings on commit here, but a shell script in the working copy would fail. | The script is LF, and `.gitattributes` keeps `*.sh` LF on every checkout. |
 
 ### 3.4 Proving the tests can catch real bugs (deliberate)
 
@@ -120,6 +131,18 @@ bugs on purpose, one at a time, ran the suite, and then restored the code
   accounts `AT` numbers but kept existing `LL` numbers working instead of
   renumbering accounts: account numbers are identifiers that customers share
   and that the audit log records.
+* The BalanceVault FAQ lists "PostgreSQL / Prisma". Prisma is an ORM for
+  Node.js, and Athena's backend is Java, so the AI did not bolt a Node layer
+  onto it: Hibernate (JPA) plays Prisma's part, with entities that the app
+  checks against the real schema at every start (`ddl-auto=validate`). The
+  write-up explains the mapping.
+* With full least privilege chosen, the AI pointed out what it does not
+  cover: the app still holds the owner's password to upgrade the schema at
+  startup. THREATS.md (T36) and DEPLOYMENT.md describe the stricter split
+  instead of claiming more than was built.
+* There is no Docker on the author's PC, so the AI did not claim the Compose
+  file works: CI now starts the whole Compose stack, checks Redis and the
+  restricted role, and runs the first-admin script against it.
 
 ## 5. Checks the AI ran on its own output
 
@@ -132,15 +155,37 @@ bugs on purpose, one at a time, ran the suite, and then restored the code
   debits equal credits, every balance matches its entries, and the
   settlement account equals all customer money.
 
-## 6. ✍️ (author) What I checked myself
+## 6. ✍️ (author) What the AI got wrong, and what I fixed myself
 
-*Write here, in your own words, what you ran and saw yourself. For example:
-the Postman runs and their results, the psql queries you ran, anything that
-looked wrong to you and what you did about it, any suggestion of the AI's you
-rejected and why.*
+The AI's own list of its mistakes is in section 3. These are the ones I ran
+into myself, and the calls I made.
 
-- …
-- …
+### Caught by running it myself
+
+| What was wrong | How I caught it | What was done |
+| --- | --- | --- |
+| The run instructions did not make clear that `JWT_SECRET` must be set. | I ran `mvnw spring-boot:run` and got `Could not resolve placeholder 'JWT_SECRET'`. | The app now checks the key at startup and says what is missing; the README explains how to make one. |
+| The test instructions did not say to create the test database first. | `mvnw test` failed with `database "athena_test" does not exist`. | The exact command is now in the test settings file and in TESTING.md. |
+| The AI said Day 3 was complete. | I asked whether that was really true. | It was not yet committed, pushed or tried in Postman; the answer was corrected. |
+| The first dashboard had six usability problems. | I went through the page and wrote them up. | One entry point for moving money, action cards with icons, sentence-case labels, a bigger copy button that announces what it did, centred page headers, one link style. |
+| The Trivy vulnerability scan was added to CI without ever being run (there is no Docker on my PC), and it failed on GitHub. | I pushed, read the failed runs and gave the AI the log. | The Java base image had a known high bug in `apt` that Ubuntu had already fixed. The image now installs Ubuntu's security fixes, and the CI actions moved off the deprecated Node 20. The next push was green. |
+| Starting the backend failed with `password authentication failed for user "postgres"`, and every new window needed the password and a JWT key typed in again. | I ran it after the rename and pasted the error. | The window had no `DB_PASSWORD`, and the renamed `athena` database did not exist yet. Now `scripts\setup-local.cmd` saves the password and a JWT key in `.env` once and creates the databases; `scripts\start-local.cmd` starts everything. |
+
+### Calls I made
+
+* **Playwright for the browser tests:** after seeing what `npx e2e init` set up, I chose to stay with Playwright.
+* **The look:** I asked for calm base colours instead of the bright colours AI tools usually pick. The result is ink, paper and slate blue.
+* **Every device and browser:** I asked whether the site works the same on every device and browser. Testing six setups then found a real bug: in Safari's engine, a failed session check signed people out without a word.
+* **The name:** I renamed the project from LedgerLine to Athena, everywhere.
+* **The go-live checklist:** I checked the project against a 19-item go-live checklist. That is how the list pages were found running one database query per row.
+* **A `git add` command:** I wanted no secret to reach GitHub, so I wrote a `git add` command excluding every kind of secret file and asked first. It would also have left out `application.properties` and broken the build, so I did not use it as written.
+* **BalanceVault:** I kept the Athena name and state in the README that it is the BalanceVault submission; I chose Redis wherever `REDIS_URL` is set with memory as the fallback on my PC; and I chose full least privilege, so the app runs as a restricted database role everywhere.
+
+### What I checked myself
+
+* I ran the backend and the tests on my own PC; the failures above came from those runs.
+* I committed and pushed every checkpoint myself.
+* After each push I read the CI results on GitHub, until every job was green (`final_v7`).
 
 ## 7. ✍️ (author) What I would do differently
 

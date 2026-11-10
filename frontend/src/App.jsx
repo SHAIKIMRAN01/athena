@@ -9,6 +9,7 @@ import DashboardPage from './pages/DashboardPage'
 import { NotFoundPage } from './pages/ForbiddenPage'
 import HistoryPage from './pages/HistoryPage'
 import MoneyPage from './pages/MoneyPage'
+import ProfilePage from './pages/ProfilePage'
 import { AuditLogPage, MonitoringPage, OverviewPage } from './pages/OversightPages'
 import StatementPage from './pages/StatementPage'
 
@@ -99,6 +100,7 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

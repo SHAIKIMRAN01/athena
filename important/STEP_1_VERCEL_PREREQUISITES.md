@@ -61,13 +61,15 @@ Check each one in CMD:
 Run these in CMD. Each has an expected result.
 
 **Backend tests** (needs the `athena_test` database, see
-[testing/TESTING.md](testing/TESTING.md)):
+[testing/TESTING.md](testing/TESTING.md)). If you ran `scripts\setup-local.cmd`
+once, leave out the `set DB_PASSWORD` line: the password comes from `.env`.
 ```bat
 cd /d E:\athena\backend\athena
 set DB_PASSWORD=your-postgres-password
 mvnw clean test
 ```
-- [ ] `Tests run: 165, Failures: 0, Errors: 0` and `BUILD SUCCESS`.
+- [ ] `Tests run: 235, Failures: 0, Errors: 0` and `BUILD SUCCESS`. No Redis is
+      needed for the tests: they start their own in-test Redis.
 
 **Website lint, tests and build:**
 ```bat
@@ -78,7 +80,7 @@ npm run format:check
 npm test
 npm run build
 ```
-- [ ] No lint warnings, `All matched files use Prettier code style!`, `Tests 60 passed`, and the build ends with `built in`.
+- [ ] No lint warnings, `All matched files use Prettier code style!`, `Tests 74 passed`, and the build ends with `built in`.
 
 **The build Vercel will make** (the API on another address):
 ```bat
@@ -138,7 +140,10 @@ Use 12 or more characters, with a letter and a digit.
 | --- | --- | --- | --- |
 | `JWT_SECRET` | Render | from section 6 | **yes** |
 | `DEMO_ADMIN_PASSWORD`, `DEMO_AUDITOR_PASSWORD`, `DEMO_USER_PASSWORD` | Render | from section 6 | **yes** |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | Render | filled in automatically by `render.yaml` | **yes** (never copy them anywhere) |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_OWNER_USERNAME`, `DB_OWNER_PASSWORD` | Render | filled in automatically by `render.yaml` from the database | **yes** (never copy them anywhere) |
+| `DB_USERNAME`, `DB_PASSWORD` | Render | `athena_app` and a password Render generates (`render.yaml`); the app creates this restricted role at startup | **yes** |
+| `REDIS_URL` | Render | filled in automatically from the `athena-redis` Key Value instance | **yes** (it can carry a password) |
+| `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD` | Render, for the first deploy only | your own first administrator (12+ characters with a letter and a digit), or leave empty | **yes**; delete both after the first start |
 | `CORS_ALLOWED_ORIGINS` | Render | `https://<your-vercel-project>.vercel.app` | no |
 | `VITE_API_BASE_URL` | Vercel | `https://<your-render-service>.onrender.com` | no (public by design) |
 | Root Directory | Vercel project settings | `frontend` | no |
@@ -151,7 +156,7 @@ Use 12 or more characters, with a letter and a digit.
 | --- | --- |
 | Software | all five installed |
 | Accounts | GitHub, Vercel and Render, with two-factor authentication |
-| Tests | 165 backend, 60 website, build and Vercel-style build pass |
+| Tests | 235 backend, 74 website, build and Vercel-style build pass |
 | Files | the six deployment files are present |
 | Decisions | visibility, names and plan chosen |
 | Secrets | JWT key and demo passwords in a password manager |

@@ -14,6 +14,7 @@ const NAVIGATION = [
   { to: '/oversight/transactions', label: 'Transactions', roles: ['ADMIN', 'AUDITOR'] },
   { to: '/oversight/audit-log', label: 'Audit log', roles: ['ADMIN', 'AUDITOR'] },
   { to: '/admin/users', label: 'Users', roles: ['ADMIN'] },
+  { to: '/profile', label: 'Profile', roles: ['USER', 'ADMIN', 'AUDITOR'] },
 ]
 
 function useMinutesLeft(expiresAt) {

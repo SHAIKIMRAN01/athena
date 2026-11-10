@@ -70,7 +70,9 @@ other websites are refused.
    select repositories → athena**, not "All repositories". It then needs
    access to nothing else.
 3. Pick the **athena** repository. Render reads `render.yaml` and lists
-   `athena-db` (PostgreSQL) and `athena` (web service).
+   `athena-db` (PostgreSQL), `athena-redis` (Key Value, for the shared rate
+   limits) and `athena` (web service). Both stores accept connections only
+   from Render's private network.
 4. Fill in the values Render asks for. They are the `sync: false` entries in
    `render.yaml`:
 
@@ -78,6 +80,7 @@ other websites are refused.
    | --- | --- |
    | `JWT_SECRET` | the key from Step 1, section 6 |
    | `DEMO_ADMIN_PASSWORD`, `DEMO_AUDITOR_PASSWORD`, `DEMO_USER_PASSWORD` | Step 1, section 6 |
+   | `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD` | your own first administrator (delete both after the first start, step 7), or leave both empty |
    | `CORS_ALLOWED_ORIGINS` | `https://<your-vercel-project>.vercel.app` if you already know it, otherwise leave it empty for now (section 3C) |
 
 5. Choose **Apply** (on newer screens, **Deploy Blueprint**). Keep the
@@ -89,7 +92,13 @@ other websites are refused.
    ```bat
    curl https://athena.onrender.com/api/health
    ```
-   - [ ] It answers `{"status":"UP"}`.
+   - [ ] It answers `{"status":"UP","database":"UP","redis":"UP"}`.
+   - [ ] **Logs** show `the app connects as athena_app` and `counted in Redis`.
+7. If you filled in `BOOTSTRAP_ADMIN_*`: sign in with them, then open the
+   `athena` service → **Environment** and delete both. (Later starts would
+   ignore them, because an administrator exists, but a password does not
+   belong in settings.) Add other staff in the app: **Users → Add staff
+   member**.
 
 ## 3B. Connect GitHub to Vercel and put the website online
 
@@ -157,14 +166,17 @@ Work through every row. Each closes a real way in.
    session ends and everyone signs in again.
 2. **A demo password**: change it on Render, and check the audit log for
    sign-ins you don't recognise.
-3. **The database password**: in Render, open `athena-db` → **Info →
+3. **The database owner's password**: in Render, open `athena-db` → **Info →
    Credentials** and add a new default credential. Open your Blueprint and
-   choose **Manual Sync**, so the API's `DB_USERNAME` and `DB_PASSWORD`
-   follow. When the API has restarted and `/api/health` answers `UP`, delete
-   the old credential.
-4. **A GitHub, Vercel or Render login**: change the password, sign out of all
+   choose **Manual Sync**, so the API's `DB_OWNER_USERNAME` and
+   `DB_OWNER_PASSWORD` follow. When the API has restarted and `/api/health`
+   answers `UP`, delete the old credential.
+4. **The app role's password** (`DB_PASSWORD`): in the `athena` service's
+   **Environment**, generate a new value and save. At the next start the app
+   sets it on `athena_app` itself.
+5. **A GitHub, Vercel or Render login**: change the password, sign out of all
    sessions, and review the installed GitHub apps (row 2).
-5. **Committed to git by mistake**: removing it from the file is **not**
+6. **Committed to git by mistake**: removing it from the file is **not**
    enough, because it stays in the history. Change the secret first, as above.
 
 ---
@@ -191,7 +203,7 @@ Work through every row. Each closes a real way in.
 3. **Postman.** Import `important\testing\Athena.postman_collection.json`,
    set the collection variable `baseUrl` to the Render address, and run it.
    Each run registers two new test users, who hold only test money.
-   - [ ] 75 checks pass.
+   - [ ] 88 checks pass (folder 7 also changes the test user's password).
 4. Put the Vercel address at the top of `README.md`, then commit and push it
    (Step 2, last section).
 
@@ -229,6 +241,9 @@ Work through every row. Each closes a real way in.
 | The first request after a pause times out | Render's free plan was asleep | Retry after a minute (money requests are safe to retry), or use an always-on plan |
 | "Too many failed sign-in attempts" | Login throttling: 5 failures per email and network in 15 minutes | Wait 15 minutes |
 | The API stops at startup: "JWT_SECRET is not set" or "must decode to at least 32 bytes" | Missing or short key | Set a key generated as in Step 1, section 6 |
+| The API stops at startup: "Could not prepare the app's database role" | The owner settings are wrong, or the owner may not create roles | Check `DB_OWNER_USERNAME` and `DB_OWNER_PASSWORD` (Blueprint **Manual Sync** refills them). The message says how to run without a restricted role if you must |
+| The API stops at startup: "The first administrator was not created: …" | `BOOTSTRAP_ADMIN_*` is half-filled or too weak, and no administrator exists yet | Fix or delete both values; the message names the setting |
+| `/api/health` shows `"redis":"DOWN"` | The Key Value instance is missing, in another region, or restarting | Limits still work per instance meanwhile. Check `athena-redis` is running in the API's region and `REDIS_URL` is set |
 | The Render build fails | Read the build log. A download error is usually temporary. | Render → **Manual Deploy → Deploy latest commit**. The same Docker build runs in GitHub's CI (the Docker image job): compare with it. |
 
 ## 3I. Alternative: everything on Vercel (not recommended yet)
@@ -238,7 +253,7 @@ PostgreSQL database from the Vercel Marketplace (for example Neon). Choosing
 it means:
 * accepting a **Beta** runtime;
 * accepting Java cold starts after 5 minutes without traffic;
-* moving the rate-limit and login counters to a shared store such as Redis;
+* a Redis store reachable from Vercel for the shared limits (the app already supports one through `REDIS_URL`);
 * capping database connections per instance;
 * confirming that visitors' real IPs reach the API.
 

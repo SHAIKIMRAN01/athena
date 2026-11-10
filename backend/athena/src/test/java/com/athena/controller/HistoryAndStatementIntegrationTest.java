@@ -200,7 +200,7 @@ class HistoryAndStatementIntegrationTest extends ApiIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         Integer earlyDeposit = JsonPath.read(response, "$.transactionId");
-        jdbcTemplate.update(
+        changeHistory("ledger_entries",
                 "UPDATE ledger_entries SET created_at = created_at - interval '3 days' WHERE transaction_id = ?",
                 earlyDeposit);
         money(DEPOSIT, alice, amount("50.00")).andExpect(status().isCreated());

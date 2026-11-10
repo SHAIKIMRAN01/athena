@@ -9,7 +9,10 @@ tested, not just written down.
 
 * Assets, attackers and trust boundaries: what we protect, from whom, and
   where trust stops.
-* **34 threats**, grouped by authentication, authorization, money, input and
+* **41 threats** (T35 to T41 added for BalanceVault: rewriting history, the
+  app's database login, guessing across instances, a Redis outage, the
+  first-admin bootstrap, staff onboarding, a password change with a stolen
+  session), grouped by authentication, authorization, money, input and
   browser, and availability and accountability. Each is tagged with STRIDE.
 * For every threat: the attack, the defence (with file names), **the test
   that proves it**, and the **residual risk**.

@@ -19,11 +19,13 @@ flowchart LR
         end
     end
 
-    DB[("PostgreSQL<br/>constraints + ledger trigger")]
+    DB[("PostgreSQL<br/>constraints, ledger trigger,<br/>append-only triggers")]
+    Redis[("Redis<br/>rate-limit counters")]
 
     UI -- "HTTPS, JSON,<br/>Authorization: Bearer" --> Proxy
     Proxy --> Static
-    Proxy --> Filters --> Rules --> Controllers --> Services --> DB
+    Proxy --> Filters --> Rules --> Controllers --> Services -- "as athena_app" --> DB
+    Filters -- "count, private network" --> Redis
 ```
 
 * **One origin.** The React app is built into the jar and served by Spring
@@ -34,18 +36,25 @@ flowchart LR
   request, and checks the token id against the logout list.
 * **The database guards money too.** Constraints (`balance >= 0`,
   `amount > 0`, valid account pairs) and a deferred trigger (debits = credits)
-  hold even if the application has a bug.
+  hold even if the application has a bug. Ledger entries, transactions and
+  audit records are append-only: triggers refuse every UPDATE and DELETE.
+* **Least privilege.** The app connects as `athena_app`, which can read,
+  add rows and change only balances, statuses and passwords. The tables'
+  owner runs `schema.sql` at startup and nothing else (section 6).
+* **Shared limits.** Rate limits and sign-in throttling are counted in Redis,
+  so every instance enforces the same limits; while Redis is unreachable each
+  instance counts in memory (section 7).
 
 ## 2. Backend layers
 
 | Layer | Package | Responsibility |
 | --- | --- | --- |
 | Filters | `security` | `RateLimitFilter`, `RequestSizeLimitFilter`, `JwtAuthenticationFilter`, problem-JSON 401/403 |
-| Configuration | `security`, `config` | `SecurityConfig` (rules, headers, CORS), `SpaWebConfig`, `DemoDataInitializer`, `TimeConfig` |
+| Configuration | `security`, `config` | `SecurityConfig` (rules, headers, CORS), `SpaWebConfig`, `DemoDataInitializer`, `TimeConfig`, `DatabaseRolesProvisioner` (the app's role), `RateLimitStoreConfig` (Redis or memory), `AdminBootstrap` (first administrator) |
 | Controllers | `controller` | HTTP only: validate input, take the user from the token, call one service method |
 | Services | `service` | Business rules and transactions |
 | Repositories | `repository` | Spring Data JPA queries (bound parameters only) |
-| Entities | `entity` | JPA mappings of the tables; `LedgerEntry`, `AuditLog`, `RevokedToken` are immutable |
+| Entities | `entity` | JPA mappings of the tables; `LedgerEntry`, `AuditLog`, `RevokedToken` are immutable, and the database enforces it for ledger, transaction and audit rows |
 | DTOs | `dto` | Request and response shapes; never expose entities or password hashes |
 | Errors | `exception` | `BusinessException` subclasses carry an HTTP status and a stable `code`; `GlobalExceptionHandler` writes RFC 9457 problem details |
 
@@ -131,6 +140,7 @@ erDiagram
         varchar password_hash "BCrypt"
         boolean enabled
         timestamp created_at
+        timestamptz password_changed_at "older tokens are refused"
     }
     user_roles {
         bigint user_id PK, FK
@@ -195,6 +205,10 @@ Database rules that protect money (see `backend/athena/src/main/resources/db/sch
 * `uq_transactions_user_idempotency_key`: one transaction per user and key.
 * `trg_ledger_entries_balanced`: a deferred constraint trigger that refuses
   to commit a transaction whose debits and credits differ.
+* `trg_ledger_entries_append_only`, `trg_financial_transactions_append_only`,
+  `trg_audit_logs_append_only`: refuse every UPDATE and DELETE of a written
+  row, whoever asks (`athena_refuse_change()`). `TRUNCATE`, which only the
+  owner may run, still works, for test databases.
 
 ## 5. Frontend structure
 
@@ -210,3 +224,44 @@ Database rules that protect money (see `backend/athena/src/main/resources/db/sch
 Money is never a JavaScript float in the frontend. Amounts typed by the user
 are checked as text and sent exactly as typed. Amounts from the server are
 parsed as exact text (`parseJsonExact`) and formatted with `BigInt`.
+
+## 6. Database roles (least privilege)
+
+| Role | Used for | Rights |
+| --- | --- | --- |
+| Owner (`DB_OWNER_USERNAME`: `postgres` on a PC, `athena` on Render and in Compose) | Startup only: `schema.sql`, `seed.sql`, creating the app's role | Owns every table; must be allowed to create roles |
+| `athena_writer` (group, cannot sign in) | Holds the app's grants, set by `schema.sql` on every start | SELECT on every table; INSERT on every table but `roles`; UPDATE on `app_users` and `accounts` only; DELETE on `revoked_tokens` only; sequences |
+| `athena_app` (`DB_USERNAME`) | Everything the app does at runtime | Member of `athena_writer`, nothing else: not a superuser, cannot create databases or roles, owns nothing |
+
+`DatabaseRolesProvisioner` runs before anything else touches the database.
+When the owner and the app role differ, it connects as the owner, creates
+`athena_writer` if missing, creates `athena_app` with `DB_PASSWORD` (or
+resets its password), and refuses to continue if that role is a superuser.
+Spring then runs `schema.sql` as the owner (`spring.sql.init.username`) and
+connects the app as `athena_app`. Without `DB_OWNER_*`, one user does
+everything, as before.
+
+What the app's role cannot do, each checked by `DatabaseRolesIntegrationTest`
+with SQLSTATE `42501`: UPDATE or DELETE ledger entries, transactions or audit
+records; TRUNCATE; DELETE accounts or users; change roles; ALTER, DROP or
+CREATE tables; switch triggers off; create roles.
+
+## 7. Rate limits and Redis
+
+```mermaid
+flowchart LR
+    L["FixedWindowRateLimiter<br/>api, register, login x3"] --> F["FailoverCounterStore"]
+    F -- "Redis reachable" --> R["RedisCounterStore<br/>atomic Lua: INCR + PEXPIRE<br/>keys: athena:limit:SHA-256"]
+    F -- "unreachable: memory,<br/>retry every 5 s" --> M["InMemoryCounterStore"]
+```
+
+* Each limiter counts events per key in fixed windows. The counters live in a
+  `CounterStore`: Redis when `REDIS_URL` is set, memory otherwise.
+* One increment is one Lua script, so the count and the window's expiry are
+  set together and two instances can never both see the same count.
+* Keys are SHA-256 hashes of "limiter:subject", so Redis holds no email or
+  IP address.
+* When Redis fails, `FailoverCounterStore` logs it once, counts in memory and
+  tries Redis again every 5 seconds. Reading a count takes the higher of the
+  two, so a lockout from an outage still holds afterwards.
+* `GET /api/health` reports `redis` as `UP`, `DOWN` or `NOT_CONFIGURED`.

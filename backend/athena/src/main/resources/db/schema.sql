@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS app_users (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Day 4 (BalanceVault): when the user last changed their password. Tokens
+-- issued before it are refused, so a password change ends every session.
+ALTER TABLE app_users
+    ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
+
 -- 3. User roles
 CREATE TABLE IF NOT EXISTS user_roles (
     user_id BIGINT NOT NULL REFERENCES app_users(id),
@@ -223,3 +228,57 @@ CREATE CONSTRAINT TRIGGER trg_ledger_entries_balanced
 -- The project was renamed from LedgerLine to Athena. In a database created
 -- before that, the trigger above now uses the new function; drop the old one.
 DROP FUNCTION IF EXISTS ledgerline_assert_transaction_balanced();
+
+-- 10. Append-only history
+-- Ledger entries, financial transactions and audit records are history: once
+-- written they are never changed or deleted, whoever asks. (The app's own
+-- database role cannot even ask: see section 11.) Only the schema owner can
+-- empty a table with TRUNCATE, which the test suite does between tests.
+CREATE OR REPLACE FUNCTION athena_refuse_change()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS '
+BEGIN
+    RAISE EXCEPTION ''% is append-only: % is not allowed'', TG_TABLE_NAME, TG_OP;
+END;
+';
+
+DROP TRIGGER IF EXISTS trg_ledger_entries_append_only ON ledger_entries;
+CREATE TRIGGER trg_ledger_entries_append_only
+    BEFORE UPDATE OR DELETE ON ledger_entries
+    FOR EACH ROW
+    EXECUTE FUNCTION athena_refuse_change();
+
+DROP TRIGGER IF EXISTS trg_financial_transactions_append_only ON financial_transactions;
+CREATE TRIGGER trg_financial_transactions_append_only
+    BEFORE UPDATE OR DELETE ON financial_transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION athena_refuse_change();
+
+DROP TRIGGER IF EXISTS trg_audit_logs_append_only ON audit_logs;
+CREATE TRIGGER trg_audit_logs_append_only
+    BEFORE UPDATE OR DELETE ON audit_logs
+    FOR EACH ROW
+    EXECUTE FUNCTION athena_refuse_change();
+
+-- 11. Least privilege
+-- The app connects as its own login role (DB_USERNAME, normally athena_app),
+-- a member of the group role athena_writer; this script runs as the schema
+-- owner (DB_OWNER_USERNAME). athena_writer may read, add rows, and change
+-- only what the app changes (balances, account and user status, passwords,
+-- signed-out tokens). It has no UPDATE or DELETE on the history tables, no
+-- TRUNCATE, and cannot create, change or drop anything. The app creates both
+-- roles at startup (DatabaseRolesProvisioner); if they do not exist, as when
+-- one user does everything, nothing below runs.
+DO '
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = ''athena_writer'') THEN
+        REVOKE ALL ON ALL TABLES IN SCHEMA public FROM athena_writer;
+        GRANT USAGE ON SCHEMA public TO athena_writer;
+        GRANT SELECT ON roles TO athena_writer;
+        GRANT SELECT, INSERT, UPDATE ON app_users, accounts TO athena_writer;
+        GRANT SELECT, INSERT ON user_roles, financial_transactions, ledger_entries, audit_logs TO athena_writer;
+        GRANT SELECT, INSERT, DELETE ON revoked_tokens TO athena_writer;
+        GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO athena_writer;
+    END IF;
+END';

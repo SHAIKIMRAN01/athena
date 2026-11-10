@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -50,6 +52,9 @@ public abstract class PostgresIntegrationTest {
     @Autowired
     private RateLimitService rateLimitService;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     @BeforeEach
     void resetDatabase() {
         String database = jdbcTemplate.queryForObject(
@@ -60,19 +65,32 @@ public abstract class PostgresIntegrationTest {
                     + database + "': tests must use a database whose name ends in _test");
         }
 
-        jdbcTemplate.execute("TRUNCATE ledger_entries, financial_transactions, audit_logs, "
+        // Emptying the history tables is TRUNCATE, which the append-only
+        // triggers allow and only the tables' owner may run.
+        JdbcTemplate operator = operatorJdbcTemplate();
+        operator.execute("TRUNCATE ledger_entries, financial_transactions, audit_logs, "
                 + "revoked_tokens RESTART IDENTITY");
-        jdbcTemplate.update("DELETE FROM accounts WHERE account_type <> 'SETTLEMENT'");
-        jdbcTemplate.update("DELETE FROM user_roles");
-        jdbcTemplate.update(
+        operator.update("DELETE FROM accounts WHERE account_type <> 'SETTLEMENT'");
+        operator.update("DELETE FROM user_roles");
+        operator.update(
                 "DELETE FROM app_users WHERE id NOT IN (SELECT user_id FROM accounts)");
-        jdbcTemplate.update(
+        operator.update(
                 "UPDATE accounts SET balance = 0 WHERE account_type = 'SETTLEMENT'");
 
-        // Failed-login and rate-limit counters live in memory and would
-        // otherwise carry over from one test to the next.
+        // Failed-login and rate-limit counters (in memory, or in Redis when a
+        // test sets one up) would otherwise carry over from one test to the next.
         loginAttemptService.reset();
         rateLimitService.reset();
+    }
+
+    /**
+     * The connection that cleans up between tests and does what an operator
+     * would do at a SQL prompt. Normally the app's own, which in tests is the
+     * tables' owner; a test whose app runs as a restricted role returns an
+     * owner's connection here.
+     */
+    protected JdbcTemplate operatorJdbcTemplate() {
+        return jdbcTemplate;
     }
 
     /**
@@ -81,8 +99,9 @@ public abstract class PostgresIntegrationTest {
      */
     protected RegisterResponse registerWithRole(String name, String role) {
         RegisterResponse user = register(name);
-        jdbcTemplate.update("DELETE FROM user_roles WHERE user_id = ?", user.getUserId());
-        jdbcTemplate.update(
+        JdbcTemplate operator = operatorJdbcTemplate();
+        operator.update("DELETE FROM user_roles WHERE user_id = ?", user.getUserId());
+        operator.update(
                 "INSERT INTO user_roles (user_id, role_id) SELECT ?, id FROM roles WHERE name = ?",
                 user.getUserId(), role);
         return user;
@@ -98,6 +117,22 @@ public abstract class PostgresIntegrationTest {
 
     protected static String emailOf(String name) {
         return name.toLowerCase() + "@example.test";
+    }
+
+    /**
+     * Runs one statement that changes recorded history, which only a test
+     * may do (to back-date entries, say). The table's append-only trigger is
+     * switched off for that statement alone, in one transaction, so it is on
+     * again whatever happens. Only the tables' owner can do this; the app's
+     * own database role cannot.
+     */
+    protected void changeHistory(String table, String sql, Object... args) {
+        String trigger = "trg_" + table + "_append_only";
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            jdbcTemplate.execute("ALTER TABLE " + table + " DISABLE TRIGGER " + trigger);
+            jdbcTemplate.update(sql, args);
+            jdbcTemplate.execute("ALTER TABLE " + table + " ENABLE TRIGGER " + trigger);
+        });
     }
 
     protected BigDecimal balanceOf(String accountNumber) {

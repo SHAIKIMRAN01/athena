@@ -31,6 +31,13 @@ errors. Here is what each attempt meets.
 | Read stack traces in errors | Only `code`, `detail` and an `errorId` | `GlobalExceptionHandler` |
 | Frame the site, or call it from another site | Blocked by CSP / X-Frame-Options / closed CORS | Security headers |
 | Edit a balance in the database | The auditor's integrity check turns red | `LedgerReportService` |
+| Rewrite or delete a ledger, transaction or audit row in the database | `ERROR: … is append-only`, even as the owner | Triggers in `schema.sql`, section 10 |
+| Use the app's own database login to do damage | `permission denied` (42501): no UPDATE or DELETE of history, no TRUNCATE, DROP or ALTER | Role `athena_app` in `athena_writer`, `DatabaseRolesProvisioner` |
+| Spread password guesses over several app instances | The same limits everywhere: the counters are shared in Redis | `RedisCounterStore` |
+| Stop Redis to switch the limits off | Limits keep working in each instance's memory; health shows `redis: DOWN` | `FailoverCounterStore` |
+| Create or reset an administrator with the bootstrap settings or script | Nothing happens once an administrator exists | `AdminBootstrap` |
+| Add an administrator as a customer or an auditor | 403, audited | `POST /api/admin/staff`, ADMIN only |
+| Keep using a session after the owner changed the password | 401 `TOKEN_REVOKED` | The password stamp in each token |
 
 ## Show it
 
@@ -46,8 +53,12 @@ attack.
 
 ## Evidence in tests
 
-* `backend/athena/src/test/java/com/athena/security/`: 59 tests
-  aimed at attacks.
+* `backend/athena/src/test/java/com/athena/security/`: 86 tests
+  aimed at attacks, including Redis, staff onboarding and password changes.
+* `AppendOnlyRecordsIntegrationTest`, `DatabaseRolesIntegrationTest`: the
+  database refuses to rewrite history, and the app's role cannot try.
+* `AdminBootstrapIntegrationTest`: the first-admin bootstrap cannot be
+  abused.
 * `TransactionServiceIntegrationTest`: concurrency and rollback.
 * `IdempotencyIntegrationTest`: duplicates and replays.
 
@@ -55,7 +66,8 @@ attack.
 
 1. **Three layers guard money.** Application rules on locked rows, then
    database constraints, then a commit-time trigger that refuses an
-   unbalanced ledger.
+   unbalanced ledger. History is append-only in the database itself, and
+   the app connects with a role that could not rewrite it anyway.
 2. **No floats anywhere.** BigDecimal in Java, NUMERIC(19,2) in PostgreSQL,
    decimal strings in the browser.
 3. **Every refusal is recorded.** A refused withdrawal is a FAILED

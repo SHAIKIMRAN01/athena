@@ -15,6 +15,9 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
 
     boolean existsByEmail(String email);
 
+    /** Whether any user has the role, for example ROLE_ADMIN. */
+    boolean existsByRolesName(String roleName);
+
     /**
      * A page of users with their accounts loaded in the same query. A user
      * reaches the account through the reverse side of a one-to-one link,

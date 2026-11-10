@@ -1,4 +1,23 @@
-import { expect } from '@playwright/test'
+import { expect, test as base } from '@playwright/test'
+
+/**
+ * Playwright's `test`, plus `newPage()`: a page with a session of its own, for
+ * journeys that need two people signed in at once. Pages opened straight from
+ * `browser.newPage()` stay open until the browser closes, so later tests ran
+ * beside them; these are closed after each test.
+ */
+export const test = base.extend({
+  // The second argument is Playwright's fixture callback (not a React hook).
+  newPage: async ({ browser }, provide) => {
+    const pages = []
+    await provide(async () => {
+      const page = await browser.newPage()
+      pages.push(page)
+      return page
+    })
+    await Promise.all(pages.map((page) => page.close()))
+  },
+})
 
 export const PASSWORD = 'Password123!'
 

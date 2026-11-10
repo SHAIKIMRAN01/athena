@@ -93,6 +93,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 reject(request, "ACCOUNT_DISABLED");
                 return;
             }
+            if (issuedBeforePasswordChange(claims, user)) {
+                reject(request, "TOKEN_REVOKED");
+                return;
+            }
 
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
@@ -106,6 +110,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         } catch (JwtException | IllegalArgumentException | UsernameNotFoundException invalid) {
             reject(request, "TOKEN_INVALID");
         }
+    }
+
+    /**
+     * A password change ends every session started before it. JWT times are
+     * whole seconds, so a token from the same second as the change is kept:
+     * that is the new sign-in that usually follows the change.
+     */
+    /**
+     * The token's password stamp (see {@link JwtService#PASSWORD_STAMP_CLAIM})
+     * differs from the user's once the password has changed since the token
+     * was issued. Tokens from before stamps existed count as 0, which matches
+     * users who have never changed their password.
+     */
+    private static boolean issuedBeforePasswordChange(Claims claims, UserDetails user) {
+        if (!(user instanceof CustomUserDetails details)) {
+            return false;
+        }
+        Object stamp = claims.get(JwtService.PASSWORD_STAMP_CLAIM);
+        long tokenStamp = stamp instanceof Number number ? number.longValue() : 0;
+        return tokenStamp != JwtService.passwordStamp(details.getUser());
     }
 
     private static void reject(HttpServletRequest request, String reason) {

@@ -11,6 +11,7 @@ const ENDED_MESSAGES = {
   TOKEN_REVOKED: 'You were signed out. Please sign in again.',
   ACCOUNT_DISABLED: 'Your user has been disabled. Contact an administrator.',
   CHECK_FAILED: 'We could not confirm your session with the server. Please sign in again.',
+  PASSWORD_CHANGED: 'Your password was changed. Sign in with the new one.',
 }
 
 // A stored session is checked with the server when the page loads. When the
@@ -126,10 +127,13 @@ export function AuthProvider({ children, retryDelays = SESSION_CHECK_RETRY_DELAY
       expiresAt: session?.expiresAt ?? null,
       signIn,
       signOut,
+      // After a password change the server refuses this token (and every
+      // other one from before), so the session ends here with a clear note.
+      endAfterPasswordChange: () => endSession('PASSWORD_CHANGED'),
       clearNotice: () => setNotice(null),
       hasRole: (...roles) => Boolean(user?.roles?.some((role) => roles.includes(role))),
     }),
-    [user, status, notice, session, signIn, signOut],
+    [user, status, notice, session, signIn, signOut, endSession],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

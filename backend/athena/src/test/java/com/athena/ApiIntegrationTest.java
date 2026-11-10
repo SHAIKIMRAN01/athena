@@ -27,18 +27,28 @@ public abstract class ApiIntegrationTest extends PostgresIntegrationTest {
     @Autowired
     protected MockMvc mockMvc;
 
+    /** Signs in as a user registered with {@link #register(String)}. */
     protected String login(String name) throws Exception {
-        String response = mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"email": "%s", "password": "%s"}
-                                """.formatted(emailOf(name), PASSWORD)))
+        return signIn(emailOf(name), PASSWORD);
+    }
+
+    /** Signs in with any email and password and returns the access token. */
+    protected String signIn(String email, String password) throws Exception {
+        String response = loginWith(email, password)
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
         return JsonPath.read(response, "$.accessToken");
+    }
+
+    protected ResultActions loginWith(String email, String password) throws Exception {
+        return mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email": "%s", "password": "%s"}
+                        """.formatted(email, password)));
     }
 
     /**

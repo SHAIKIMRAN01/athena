@@ -31,6 +31,11 @@ export async function currentUser() {
   return data
 }
 
+/** Ends every session of the user, this one included, when it succeeds. */
+export async function changePassword({ currentPassword, newPassword }) {
+  await api.post('/users/me/password', { currentPassword, newPassword })
+}
+
 // -------------------------------------------------------------- customer
 
 export async function myAccount() {
@@ -84,6 +89,12 @@ export async function statement({ from, to }) {
 
 export async function adminUsers(params) {
   const { data } = await api.get('/admin/users', { params: clean(params) })
+  return data
+}
+
+/** Adds an administrator or auditor (`role` ADMIN or AUDITOR) with an initial password. */
+export async function createStaff({ fullName, email, role, initialPassword }) {
+  const { data } = await api.post('/admin/staff', { fullName, email, role, initialPassword })
   return data
 }
 

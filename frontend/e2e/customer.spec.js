@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { PASSWORD, moveMoney, openMenu, registerByApi, signIn, signOut, uniqueEmail } from './helpers'
+import { PASSWORD, goToSection, moveMoney, openMenu, registerByApi, signIn, signOut, uniqueEmail } from './helpers'
 
 test('a customer registers, moves money, checks history and statement, and signs out', async ({ page, request }) => {
   const bob = await registerByApi(request, 'Bob')
@@ -109,4 +109,28 @@ test('an expired session sends the user to sign in with an explanation', async (
   // The server answers 401 to the token; the app signs out and explains.
   await expect(page).toHaveURL(/\/login$/)
   await expect(page.getByText(/Please sign in again/)).toBeVisible()
+})
+
+test('a customer changes their password: the session ends and only the new password works', async ({
+  page,
+  request,
+}) => {
+  const carol = await registerByApi(request, 'Carol')
+  await signIn(page, carol.email)
+  await expect(page.getByRole('heading', { name: 'Hello, Carol' })).toBeVisible()
+
+  await goToSection(page, 'Profile')
+  await expect(page.getByText(carol.accountNumber)).toBeVisible()
+  await page.getByLabel('Current password').fill(PASSWORD)
+  await page.getByLabel('New password', { exact: true }).fill('Brand-new-pass-9')
+  await page.getByLabel('Repeat new password').fill('Brand-new-pass-9')
+  await page.getByRole('button', { name: 'Change password' }).click()
+
+  await expect(page.getByText('Your password was changed. Sign in with the new one.')).toBeVisible()
+  await expect(page).toHaveURL(/\/login$/)
+
+  await signIn(page, carol.email, PASSWORD)
+  await expect(page.getByRole('alert')).toHaveText('Email or password is incorrect')
+  await signIn(page, carol.email, 'Brand-new-pass-9')
+  await expect(page.getByRole('heading', { name: 'Hello, Carol' })).toBeVisible()
 })

@@ -5,7 +5,6 @@ import com.athena.exception.TooManyRequestsException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.time.Clock;
 import java.time.Duration;
 
 /**
@@ -16,14 +15,16 @@ public class RateLimitService {
 
     private final FixedWindowRateLimiter apiRequests;
     private final FixedWindowRateLimiter registrations;
+    private final CounterStore store;
 
     public RateLimitService(
             @Value("${app.security.rate-limit.api-requests-per-minute:600}") int apiRequestsPerMinute,
             @Value("${app.security.rate-limit.registrations-per-hour:50}") int registrationsPerHour,
-            Clock clock) {
+            CounterStore store) {
 
-        this.apiRequests = new FixedWindowRateLimiter(apiRequestsPerMinute, Duration.ofMinutes(1), clock);
-        this.registrations = new FixedWindowRateLimiter(registrationsPerHour, Duration.ofHours(1), clock);
+        this.apiRequests = new FixedWindowRateLimiter("api", apiRequestsPerMinute, Duration.ofMinutes(1), store);
+        this.registrations = new FixedWindowRateLimiter("register", registrationsPerHour, Duration.ofHours(1), store);
+        this.store = store;
     }
 
     /**
@@ -46,7 +47,6 @@ public class RateLimitService {
 
     /** Forgets all counters. Used by tests so each one starts clean. */
     public void reset() {
-        apiRequests.clear();
-        registrations.clear();
+        store.clear();
     }
 }

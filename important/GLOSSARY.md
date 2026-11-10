@@ -111,3 +111,23 @@ so you can open the file and see it.
 | **Build-time vs run-time variable** | A build-time variable is baked into the files when they are built (change it, rebuild); a run-time variable is read when the server starts. | `VITE_API_BASE_URL` (build time, Vercel) vs `JWT_SECRET` (run time, Render) |
 | **CORS allowlist / preflight** | The exact website addresses the API lets browsers call it from; a preflight is the browser's OPTIONS request asking first. | `CORS_ALLOWED_ORIGINS`, `CorsIntegrationTest` |
 | **Reverse proxy, X-Forwarded-For** | The host's front server that terminates HTTPS and passes on the client IP. | `FORWARD_HEADERS_STRATEGY` |
+
+## BalanceVault additions
+
+| Term | Meaning | In Athena |
+| --- | --- | --- |
+| **BalanceVault** | The new name of the LedgerLine challenge, with added requirements. | Athena is the entry; see BALANCEVAULT.md. |
+| **Append-only** | Rows can be added but never changed or deleted. | Triggers on `ledger_entries`, `financial_transactions` and `audit_logs` (`athena_refuse_change()`). |
+| **Least privilege** | Give each part only the rights it needs, so a mistake or a leak can do little harm. | The app connects as `athena_app`; the owner only creates the tables. |
+| **Database role** | PostgreSQL's name for a user or a group of rights. | `athena_writer` (the group with the app's grants) and `athena_app` (the app's login). |
+| **GRANT / REVOKE** | SQL that gives or takes away a right on a table. | Section 11 of `schema.sql`. |
+| **SQLSTATE 42501** | PostgreSQL's code for "insufficient privilege". | What `athena_app` gets for every forbidden statement. |
+| **Redis** | A fast in-memory key-value store. | Holds the rate-limit and sign-in counters, shared by every instance. Render calls its version "Key Value". |
+| **Lua script (in Redis)** | A small program Redis runs in one step, so nothing else happens in between. | Increments a counter and sets its expiry together (`RedisCounterStore`). |
+| **Failover** | Switching to a stand-in when something fails. | `FailoverCounterStore` counts in memory while Redis is unreachable. |
+| **Bootstrap (first administrator)** | Creating the very first administrator, before anyone can sign in to create one. | `scripts/bootstrap-admin`, `AdminBootstrap`; works only while there is no administrator. |
+| **Advisory lock** | A lock in PostgreSQL that the app names itself, not tied to a row. | Lets one server at a time create the first administrator. |
+| **Password stamp** | The time of the last password change, carried in each token. | A token whose stamp differs from the user's is refused, so a password change ends every session. |
+| **Staff** | Administrators and auditors: no customer account, cannot move money. | Added by an administrator (`POST /api/admin/staff`). |
+| **Health check** (per dependency) | The health answer names each part it depends on. | `{"status","database","redis"}` |
+| **Prisma** | An ORM for Node.js named in the BalanceVault FAQ. | Not used: the backend is Java, so Hibernate (JPA) plays that part. |

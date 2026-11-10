@@ -1,13 +1,12 @@
 package com.athena.config;
 
 import com.athena.dto.RegisterRequest;
-import com.athena.entity.Role;
 import com.athena.entity.User;
 import com.athena.repository.AccountRepository;
 import com.athena.repository.FinancialTransactionRepository;
-import com.athena.repository.RoleRepository;
 import com.athena.repository.UserRepository;
 import com.athena.service.AuthService;
+import com.athena.service.StaffUserService;
 import com.athena.service.TransactionService;
 
 import org.slf4j.Logger;
@@ -16,11 +15,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.util.Set;
 
 /**
  * Creates the demo users when DEMO_DATA_ENABLED=true:
@@ -47,10 +44,9 @@ public class DemoDataInitializer implements ApplicationRunner {
     static final String BOB_EMAIL = "bob@athena.demo";
 
     private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
     private final AccountRepository accountRepository;
     private final FinancialTransactionRepository transactionRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final StaffUserService staffUsers;
     private final AuthService authService;
     private final TransactionService transactionService;
     private final String adminPassword;
@@ -59,10 +55,9 @@ public class DemoDataInitializer implements ApplicationRunner {
 
     public DemoDataInitializer(
             UserRepository userRepository,
-            RoleRepository roleRepository,
             AccountRepository accountRepository,
             FinancialTransactionRepository transactionRepository,
-            PasswordEncoder passwordEncoder,
+            StaffUserService staffUsers,
             AuthService authService,
             TransactionService transactionService,
             @Value("${app.demo.admin-password:}") String adminPassword,
@@ -70,10 +65,9 @@ public class DemoDataInitializer implements ApplicationRunner {
             @Value("${app.demo.user-password:}") String userPassword) {
 
         this.userRepository = userRepository;
-        this.roleRepository = roleRepository;
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
-        this.passwordEncoder = passwordEncoder;
+        this.staffUsers = staffUsers;
         this.authService = authService;
         this.transactionService = transactionService;
         this.adminPassword = adminPassword;
@@ -88,8 +82,8 @@ public class DemoDataInitializer implements ApplicationRunner {
         requireStrong("DEMO_AUDITOR_PASSWORD", auditorPassword);
         requireStrong("DEMO_USER_PASSWORD", userPassword);
 
-        ensureStaff("Athena Admin", ADMIN_EMAIL, adminPassword, "ROLE_ADMIN");
-        ensureStaff("Athena Auditor", AUDITOR_EMAIL, auditorPassword, "ROLE_AUDITOR");
+        ensureStaff("Athena Admin", ADMIN_EMAIL, adminPassword, StaffUserService.ADMIN_ROLE);
+        ensureStaff("Athena Auditor", AUDITOR_EMAIL, auditorPassword, StaffUserService.AUDITOR_ROLE);
 
         Long alice = ensureCustomer("Alice Demo", ALICE_EMAIL);
         Long bob = ensureCustomer("Bob Demo", BOB_EMAIL);
@@ -110,19 +104,7 @@ public class DemoDataInitializer implements ApplicationRunner {
     }
 
     private void ensureStaff(String fullName, String email, String password, String roleName) {
-        if (userRepository.existsByEmail(email)) {
-            return;
-        }
-
-        Role role = roleRepository.findByName(roleName)
-                .orElseThrow(() -> new IllegalStateException(roleName + " not found"));
-
-        User user = new User();
-        user.setFullName(fullName);
-        user.setEmail(email);
-        user.setPasswordHash(passwordEncoder.encode(password));
-        user.setRoles(Set.of(role));
-        userRepository.save(user);
+        staffUsers.createIfMissing(fullName, email, password, roleName);
     }
 
     private Long ensureCustomer(String fullName, String email) {
@@ -144,10 +126,9 @@ public class DemoDataInitializer implements ApplicationRunner {
     }
 
     private static void requireStrong(String name, String password) {
-        if (password == null || password.length() < 12
-                || !password.matches(".*\\p{L}.*") || !password.matches(".*\\d.*")) {
+        if (!StaffUserService.isStrongPassword(password)) {
             throw new IllegalStateException(name + " must be set to at least 12 characters with a letter"
-                    + " and a digit when DEMO_DATA_ENABLED=true");
+                    + " and a digit (at most 72 bytes) when DEMO_DATA_ENABLED=true");
         }
     }
 }

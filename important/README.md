@@ -7,11 +7,13 @@ in this folder. The code itself is in `backend/` and `frontend/`.
 
 | Read this | To learn |
 | --- | --- |
-| [Athena-Technology-Overview.pptx](Athena-Technology-Overview.pptx) | **Start here.** 16 slides: each technology and its job. Every slide has speaker notes. |
+| [BALANCEVAULT.md](BALANCEVAULT.md) | **BalanceVault judges, start here.** Every requirement, where it is met and the test that proves it |
+| [TECHNICAL_WRITEUP.md](TECHNICAL_WRITEUP.md) | The technical write-up: design, the hard problems and how they were solved, trade-offs |
+| [Athena-Technology-Overview.pptx](Athena-Technology-Overview.pptx) | 16 slides: each technology and its job. Every slide has speaker notes. (Made before the BalanceVault additions; the write-up covers those.) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the parts fit: system diagram, the journey of one transfer, double-entry, database diagram |
 | [GLOSSARY.md](GLOSSARY.md) | Every technical term, in plain words, with where it is used |
 | [API.md](API.md) | Every API endpoint, its input, its answer and its error codes |
-| [../THREATS.md](../THREATS.md) | The threat model: 34 threats, their defences and the tests that prove them |
+| [../THREATS.md](../THREATS.md) | The threat model: 41 threats, their defences and the tests that prove them |
 | [../PROMPTS.md](../PROMPTS.md) | How AI was used, and every time it was wrong |
 
 ## 2. Test it
@@ -38,18 +40,19 @@ in this folder. The code itself is in `backend/` and `frontend/`.
 
 | Open | For |
 | --- | --- |
-| [DEMO.md](DEMO.md) | Demo accounts, a 7-minute demo script, 12 test scenarios |
-| [screenshots/](screenshots/) | 12 screenshots of the app (9 on a desktop, 3 on a phone), taken automatically by the browser tests |
+| [DEMO.md](DEMO.md) | Demo accounts, a 7-minute demo script, the demo video shot list, 17 test scenarios |
+| [screenshots/](screenshots/) | 14 screenshots of the app (11 on a desktop, 3 on a phone), taken automatically by the browser tests |
 | [judging/README.md](judging/README.md) | One guide per judging criterion |
 
 ## Where the code is
 
 ```
 athena/
-├─ backend/athena/       Spring Boot API: src/main (code), src/test (165 tests)
+├─ backend/athena/       Spring Boot API: src/main (code), src/test (235 tests)
 ├─ frontend/             React website: src (code + unit tests), e2e (browser tests)
 ├─ important/            this folder
 │  └─ testing/           Postman collection, security check, test guide and results
+├─ scripts/              setup-local.cmd (once), start-local.cmd (every time), bootstrap-admin (first administrator)
 ├─ .github/              CI, CodeQL, Dependabot
 ├─ Dockerfile, docker-compose.yml, render.yaml, .env.example
 └─ README.md, THREATS.md, PROMPTS.md

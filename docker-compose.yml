@@ -1,10 +1,14 @@
-# Athena with its own PostgreSQL, for a local full-stack run.
+# Athena with its own PostgreSQL and Redis, for a local full-stack run.
 #
-#   copy .env.example .env      (then fill in the values)
+#   scripts\setup-local.cmd     (or copy .env.example .env and fill in the values)
 #   docker compose up --build
 #   open http://localhost:8080
 #
+# First administrator: sh scripts/bootstrap-admin.sh docker
+#
 # Secrets come from .env, which git ignores. Nothing secret is in this file.
+# As in production, the app connects as its own restricted role, athena_app,
+# which it creates at startup; the owner (athena) only creates the tables.
 
 services:
   db:
@@ -12,13 +16,26 @@ services:
     environment:
       POSTGRES_DB: athena
       POSTGRES_USER: athena
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      # The tables' owner. An .env from before the restricted role has only
+      # DB_PASSWORD, which then serves for both roles.
+      POSTGRES_PASSWORD: ${DB_OWNER_PASSWORD:-${DB_PASSWORD:?Set DB_PASSWORD in .env}}
     volumes:
       - athena-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U athena -d athena"]
       interval: 5s
       timeout: 5s
+      retries: 20
+
+  # Rate-limit and sign-in counters, shared by every app instance. They expire
+  # on their own, so nothing is written to disk. Reachable only by the app.
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
       retries: 20
 
   app:
@@ -28,10 +45,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DB_URL: jdbc:postgresql://db:5432/athena
-      DB_USERNAME: athena
+      DB_OWNER_USERNAME: athena
+      DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:-${DB_PASSWORD}}
+      DB_USERNAME: athena_app
       DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       # Clients connect directly here (no proxy), so do not trust X-Forwarded-For.
       FORWARD_HEADERS_STRATEGY: none

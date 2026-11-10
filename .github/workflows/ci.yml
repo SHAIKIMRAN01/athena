@@ -1,10 +1,13 @@
 # Continuous integration: every push and pull request runs
 #   1. the backend test suite against a real PostgreSQL,
 #   2. the frontend lint, unit tests, build and dependency audit,
-#   3. the whole app end to end: the security check (black-box attacks) and
-#      the Playwright browser tests against the built jar, in Chromium,
-#      Firefox and WebKit (Safari's engine), on desktop, tablet and phone sizes,
-#   4. a Docker image build.
+#   3. the whole app end to end, set up as in production (Redis for the rate
+#      limits, the app connected as its restricted database role): the
+#      security check (black-box attacks) and the Playwright browser tests
+#      against the built jar, in Chromium, Firefox and WebKit (Safari's
+#      engine), on desktop, tablet and phone sizes,
+#   4. a Docker image build and scan, and the Docker Compose stack started
+#      for real, with the first-admin bootstrap script run against it.
 # Secrets used here are generated per run and masked; none are stored.
 
 name: CI
@@ -96,10 +99,19 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       DB_URL: jdbc:postgresql://localhost:5432/athena
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      # As in production: the owner creates the tables and the app's own
+      # restricted role, athena_app, whose password is generated below.
+      DB_OWNER_USERNAME: postgres
+      DB_OWNER_PASSWORD: postgres
+      DB_USERNAME: athena_app
+      REDIS_URL: redis://localhost:6379
       DEMO_DATA_ENABLED: "true"
       # Six browser setups each register test customers; leave headroom under
       # the per-network hourly limit (50 by default) for this one run.
@@ -129,6 +141,9 @@ jobs:
           jwt=$(openssl rand -base64 48 | tr -d '\n')
           echo "::add-mask::$jwt"
           echo "JWT_SECRET=$jwt" >> "$GITHUB_ENV"
+          app=$(openssl rand -hex 16)
+          echo "::add-mask::$app"
+          echo "DB_PASSWORD=$app" >> "$GITHUB_ENV"
           for role in ADMIN AUDITOR USER; do
             password="Ci$(openssl rand -hex 12)7"
             echo "::add-mask::$password"
@@ -144,6 +159,18 @@ jobs:
           done
           cat app.log
           exit 1
+
+      - name: The app counts limits in Redis and connects as its restricted role
+        run: |
+          curl -fs http://localhost:8080/api/health | tee health.json
+          grep -q '"redis":"UP"' health.json
+          export PGPASSWORD=postgres
+          test "$(psql -h localhost -U postgres -d athena -Atc "SELECT count(*) FROM pg_stat_activity WHERE usename = 'athena_app'")" -gt 0
+          # Even with its password, the app's role cannot rewrite history.
+          export PGPASSWORD="$DB_PASSWORD"
+          if psql -h localhost -U athena_app -d athena -v ON_ERROR_STOP=1 -c "DELETE FROM audit_logs"; then
+            echo "athena_app was able to delete audit records"; exit 1
+          fi
 
       - name: Security check (black-box attacks against the running app)
         run: node important/testing/security-check.mjs http://localhost:8080 --report security-check-report.md
@@ -186,3 +213,32 @@ jobs:
       - name: Vulnerability scan (Trivy)
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --no-progress athena:ci
+
+      # The local full-stack setup, started for real: PostgreSQL, Redis and
+      # the app as its restricted role; then the first-admin bootstrap script.
+      - name: Docker Compose stack and first-admin bootstrap
+        run: |
+          owner=$(openssl rand -hex 16)
+          app=$(openssl rand -hex 16)
+          jwt=$(openssl rand -base64 48 | tr -d '\n')
+          admin="Ci$(openssl rand -hex 12)7"
+          for secret in "$owner" "$app" "$jwt" "$admin"; do echo "::add-mask::$secret"; done
+          printf 'DB_OWNER_PASSWORD=%s\nDB_PASSWORD=%s\nJWT_SECRET=%s\n' "$owner" "$app" "$jwt" > .env
+          docker compose up -d --build
+          for attempt in $(seq 1 60); do
+            curl -fs http://localhost:8080/api/health > health.json && break
+            sleep 3
+          done
+          cat health.json
+          grep -q '"database":"UP"' health.json
+          grep -q '"redis":"UP"' health.json
+          test "$(docker compose exec -T db psql -U athena -d athena -Atc "SELECT count(*) FROM pg_stat_activity WHERE usename = 'athena_app'")" -gt 0
+
+          BOOTSTRAP_ADMIN_EMAIL=root@athena.test BOOTSTRAP_ADMIN_NAME="Rita Root" BOOTSTRAP_ADMIN_PASSWORD="$admin" \
+            sh scripts/bootstrap-admin.sh docker
+          curl -fs -o /dev/null -H 'Content-Type: application/json' \
+            -d "{\"email\": \"root@athena.test\", \"password\": \"$admin\"}" http://localhost:8080/api/auth/login
+
+      - name: Docker Compose logs
+        if: failure()
+        run: docker compose logs --no-color app | tail -200

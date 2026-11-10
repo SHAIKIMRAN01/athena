@@ -1,7 +1,8 @@
-# Render blueprint: one web service built from the Dockerfile plus a managed
-# PostgreSQL database. In Render: New > Blueprint > pick this repository.
-# Values marked "sync: false" are secrets you type into the Render dashboard;
-# they are never stored in git. See important/DEPLOYMENT.md.
+# Render blueprint: one web service built from the Dockerfile, a managed
+# PostgreSQL database and a Key Value (Redis-compatible) instance. In Render:
+# New > Blueprint > pick this repository. Values marked "sync: false" are
+# secrets you type into the Render dashboard; they are never stored in git.
+# See important/DEPLOYMENT.md.
 
 databases:
   - name: athena-db
@@ -13,6 +14,14 @@ databases:
     ipAllowList: []
 
 services:
+  # Rate-limit and sign-in counters shared by every instance of the API, so a
+  # limit holds however many instances run. Private network only, like the
+  # database.
+  - type: keyvalue
+    name: athena-redis
+    plan: free
+    ipAllowList: []
+
   - type: web
     name: athena
     runtime: docker
@@ -32,14 +41,27 @@ services:
         fromDatabase:
           name: athena-db
           property: database
-      - key: DB_USERNAME
+      # The tables' owner (Render's database user): at startup it creates or
+      # upgrades the tables and the app's own role, nothing else.
+      - key: DB_OWNER_USERNAME
         fromDatabase:
           name: athena-db
           property: user
-      - key: DB_PASSWORD
+      - key: DB_OWNER_PASSWORD
         fromDatabase:
           name: athena-db
           property: password
+      # The restricted role the app connects as: it cannot change or delete
+      # the ledger or the audit log. Render generates its password once.
+      - key: DB_USERNAME
+        value: athena_app
+      - key: DB_PASSWORD
+        generateValue: true
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: athena-redis
+          property: connectionString
       - key: JWT_SECRET
         sync: false
       - key: FORWARD_HEADERS_STRATEGY
@@ -48,6 +70,12 @@ services:
       # https://athena.vercel.app (exact, no trailing slash). Leave empty
       # if you only use the website this service serves itself.
       - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      # The first administrator, created at the first start only while there
+      # is none. Fill both, deploy once, then delete both (DEPLOYMENT.md).
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
         sync: false
       - key: DEMO_DATA_ENABLED
         value: "true"

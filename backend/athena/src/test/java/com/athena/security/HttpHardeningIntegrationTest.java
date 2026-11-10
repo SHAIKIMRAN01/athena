@@ -120,11 +120,12 @@ class HttpHardeningIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void theHealthCheckSaysOnlyUpOrDown() throws Exception {
+    void theHealthCheckSaysOnlyUpOrDownPerDependency() throws Exception {
         String body = mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 
-        assertThat(body).isEqualTo("{\"status\":\"UP\"}");
+        // No versions or addresses. The tests run without REDIS_URL.
+        assertThat(body).isEqualTo("{\"status\":\"UP\",\"database\":\"UP\",\"redis\":\"NOT_CONFIGURED\"}");
     }
 }
